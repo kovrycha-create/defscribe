@@ -1,4 +1,5 @@
 
+
 import { type Emotion } from './types';
 
 export const FILLER_WORDS: Set<string> = new Set([
@@ -9,7 +10,7 @@ export const FILLER_WORDS: Set<string> = new Set([
 
 export const THEME_PRESETS: { [key: number]: { primary: string; secondary:string; accent: string } } = {
   1: { primary: "#4d8aff", secondary: "#a777ff", accent: "#ffc94d" }, // CosmoTech Default
-  2: { primary: "#4dffd4", secondary: "#4d8aff", accent: "#ff6b6b" }, // Cyan Nebula
+  2: { primary: "#4dffd4", secondary: "#d8aaff", accent: "#ff6b6b" }, // Cyan Nebula
   3: { primary: "#a777ff", secondary: "#ff6b6b", accent: "#4dffd4" }, // Violet Flare
   4: { primary: "#ffbe0b", secondary: "#4d8aff", accent: "#ff6b6b" }, // Gold Supernova
 };

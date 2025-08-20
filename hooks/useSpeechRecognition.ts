@@ -1,4 +1,5 @@
 
+
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { type ToastType } from '../components/Toast';
 import { transcribeAudio } from '../services/geminiService';
@@ -50,7 +51,6 @@ declare global {
 
 interface SpeechRecognitionHookProps {
   spokenLanguage: string;
-  userApiKey: string | null;
   addToast: (title: string, message: string, type: ToastType) => void;
   isRecordingEnabled: boolean;
 }
@@ -86,7 +86,7 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
   });
 };
 
-const useSpeechRecognition = ({ spokenLanguage, userApiKey, addToast, isRecordingEnabled }: SpeechRecognitionHookProps): SpeechRecognitionHook => {
+const useSpeechRecognition = ({ spokenLanguage, addToast, isRecordingEnabled }: SpeechRecognitionHookProps): SpeechRecognitionHook => {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [finalTranscript, setFinalTranscript] = useState('');
@@ -102,6 +102,7 @@ const useSpeechRecognition = ({ spokenLanguage, userApiKey, addToast, isRecordin
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<number | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   
   const confidenceScoresRef = useRef<number[]>([]);
   const listeningIntentRef = useRef(false);
@@ -118,14 +119,65 @@ const useSpeechRecognition = ({ spokenLanguage, userApiKey, addToast, isRecordin
     audioChunksRef.current = [];
   }, [audioBlobUrl]);
   
+    const stopListening = () => {
+    listeningIntentRef.current = false;
+    
+    if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+    }
+
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setStream(null);
+    
+    if (!isCloudMode && recognitionRef.current) {
+      languageChangedWhileListening.current = false;
+      recognitionRef.current.stop();
+    }
+    setIsListening(false);
+  };
+
   const startListening = useCallback(async () => {
-    if (isListening) return;
+    if (isListening) {
+      // This is an auto-restart, not a user-initiated start.
+      // The guard prevents re-running setup, but we need to ensure recognition continues.
+      if (!isCloudMode && recognitionRef.current) {
+        try {
+          recognitionRef.current.start();
+        } catch (e) {
+          console.error("Error on recognition restart:", e);
+          // If restart fails, stop everything to avoid a broken state.
+          stopListening();
+        }
+      }
+      return;
+    }
 
     deleteAudio();
 
     try {
         const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = mediaStream;
         setStream(mediaStream);
+
+        setTranscript('');
+        setError(null);
+
+        // Start speech recognition before MediaRecorder to avoid resource conflicts on mobile.
+        if (!isCloudMode && recognitionRef.current) {
+            recognitionRef.current.lang = spokenLanguage;
+            recognitionRef.current.start();
+        }
+
+        setIsListening(true);
+        listeningIntentRef.current = true;
 
         if (isRecordingEnabled) {
             const options = { mimeType: 'audio/webm' };
@@ -159,7 +211,7 @@ const useSpeechRecognition = ({ spokenLanguage, userApiKey, addToast, isRecordin
                     }
                     addToast('Processing Audio', 'Sending audio for cloud transcription...', 'processing');
                     const base64Audio = await blobToBase64(audioBlob);
-                    const result = await transcribeAudio(base64Audio, mimeType, userApiKey);
+                    const result = await transcribeAudio(base64Audio, mimeType);
 
                     if (result.startsWith('Error:')) {
                         addToast('Transcription Failed', result, 'error');
@@ -181,18 +233,6 @@ const useSpeechRecognition = ({ spokenLanguage, userApiKey, addToast, isRecordin
         } else {
             addToast('Listening Started', 'Transcription active. Audio is not being recorded.', 'info');
         }
-
-
-        setTranscript('');
-        setError(null);
-        setIsListening(true);
-        listeningIntentRef.current = true;
-
-        if (!isCloudMode && recognitionRef.current) {
-            recognitionRef.current.lang = spokenLanguage;
-            recognitionRef.current.start();
-        }
-
     } catch (err) {
         console.error("Failed to start listening:", err);
         setError("Microphone access was denied or no microphone was found.");
@@ -200,7 +240,7 @@ const useSpeechRecognition = ({ spokenLanguage, userApiKey, addToast, isRecordin
         setIsListening(false);
         listeningIntentRef.current = false;
     }
-  }, [isListening, deleteAudio, addToast, isCloudMode, spokenLanguage, userApiKey, isRecordingEnabled]);
+  }, [isListening, deleteAudio, addToast, isCloudMode, spokenLanguage, isRecordingEnabled, stopListening]);
   
   useEffect(() => {
     startListeningCallbackRef.current = startListening;
@@ -249,14 +289,12 @@ const useSpeechRecognition = ({ spokenLanguage, userApiKey, addToast, isRecordin
     };
 
     recognition.onend = () => {
-      // setIsListening(false); // This is now handled by stopListening
       if (languageChangedWhileListening.current) {
         languageChangedWhileListening.current = false;
         setTimeout(() => {
           if (listeningIntentRef.current) startListeningCallbackRef.current();
         }, 100);
       } else if (listeningIntentRef.current && !isCloudMode) {
-        // Only restart for local mode if intent is still there
         startListeningCallbackRef.current();
       }
     };
@@ -288,30 +326,6 @@ const useSpeechRecognition = ({ spokenLanguage, userApiKey, addToast, isRecordin
     }
   }, [isListening, spokenLanguage, prevSpokenLanguage, isCloudMode]);
 
-  const stopListening = () => {
-    listeningIntentRef.current = false;
-    
-    if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
-        recordingTimerRef.current = null;
-    }
-
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.stop();
-    }
-    
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
-    
-    if (!isCloudMode && recognitionRef.current) {
-      languageChangedWhileListening.current = false;
-      recognitionRef.current.stop();
-    }
-    setIsListening(false);
-  };
-  
   const clearTranscript = useCallback(() => {
       setTranscript('');
       setFinalTranscript('');

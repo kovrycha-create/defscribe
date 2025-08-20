@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { 
     generateSummary, 
@@ -24,7 +25,6 @@ interface UseAnalyticsProps {
     transcriptEntries: TranscriptEntry[];
     startTime: number | null;
     segments: DiarizationSegment[];
-    userApiKey: string | null;
     isListening: boolean;
     interimTranscript: string;
 }
@@ -34,7 +34,6 @@ const useAnalytics = ({
     transcriptEntries, 
     startTime, 
     segments, 
-    userApiKey, 
     isListening, 
     interimTranscript 
 }: UseAnalyticsProps) => {
@@ -137,7 +136,7 @@ const useAnalytics = ({
         addToast('Summarizing...', 'Generating your summary with Gemini AI.', 'processing');
         
         try {
-            const { summary: result, emotion } = await generateSummary(transcript, style, userApiKey);
+            const { summary: result, emotion } = await generateSummary(transcript, style);
             setSummary(result);
             addToast('Summary Ready', 'Your transcript summary is complete.', 'success');
             setSpeechAnalytics(prev => ({ ...prev, emotionalTone: emotion, emotionHistory: [...(prev.emotionHistory || []), emotion] }));
@@ -146,7 +145,7 @@ const useAnalytics = ({
         } finally {
             setIsSummarizing(false);
         }
-    }, [addToast, userApiKey]);
+    }, [addToast]);
     
     const generateAllAnalytics = useCallback(async (transcript: string, speakerProfiles: Record<SpeakerId, SpeakerProfile>) => {
         if (transcript.trim().length < 20) return;
@@ -162,9 +161,9 @@ const useAnalytics = ({
 
         try {
             const [topicsResult, actionItemsResult, snippetsResult] = await Promise.all([
-                generateTopics(transcript, userApiKey),
-                generateActionItems(transcript, userApiKey),
-                generateSnippets(transcript, userApiKey)
+                generateTopics(transcript),
+                generateActionItems(transcript),
+                generateSnippets(transcript)
             ]);
 
             setTopics(topicsResult);
@@ -179,7 +178,7 @@ const useAnalytics = ({
         } finally {
             setIsAnalyzing(false);
         }
-    }, [addToast, userApiKey]);
+    }, [addToast]);
 
     const clearAnalytics = useCallback(() => {
         setSummary('Your transcript summary will appear here.');

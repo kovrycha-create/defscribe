@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { type TranscriptEntry, type SpeakerId, type SpeakerProfile, type DiarizationSettings } from '../types';
 import { DIARIZATION_PALETTE } from '../constants';
@@ -17,7 +18,6 @@ interface UseTranscriptProps {
     addToast: (title: string, message: string, type: ToastType) => void;
     liveTranslationEnabled: boolean;
     translationLanguage: string;
-    userApiKey: string | null;
     isCloudMode: boolean;
     stream: MediaStream | null;
 }
@@ -28,7 +28,6 @@ const useTranscript = ({
     addToast, 
     liveTranslationEnabled, 
     translationLanguage,
-    userApiKey,
     isCloudMode,
     stream,
 }: UseTranscriptProps) => {
@@ -152,7 +151,7 @@ const useTranscript = ({
                 
                 if (liveTranslationEnabled) {
                     newEntry.isTranslating = true;
-                    translateText(newEntry.text, translationLanguage, userApiKey)
+                    translateText(newEntry.text, translationLanguage)
                         .then(translated => {
                             setTranscriptEntries(prev => prev.map(e => 
                                 e.id === newEntry.id 
@@ -172,7 +171,7 @@ const useTranscript = ({
                 setTranscriptEntries(prev => [...prev, newEntry]);
             }
         }
-    }, [finalTranscript, prevFinalTranscript, activeSpeaker, segments, liveTranslationEnabled, translationLanguage, userApiKey, isCloudMode]);
+    }, [finalTranscript, prevFinalTranscript, activeSpeaker, segments, liveTranslationEnabled, translationLanguage, isCloudMode]);
 
     const clearTranscriptEntries = useCallback(() => {
         setTranscriptEntries([]);
@@ -203,13 +202,13 @@ const useTranscript = ({
 
         addToast('Translating...', `Translating text to ${language}.`, 'processing');
         try {
-            const translated = await translateText(entry.text, language, userApiKey);
+            const translated = await translateText(entry.text, language);
             setTranscriptEntries(prev => prev.map(e => e.id === entryId ? { ...e, translatedText: translated } : e));
             addToast('Translation Complete', `Text successfully translated.`, 'success');
         } catch (error) {
             addToast('Translation Failed', `Could not translate text.`, 'error');
         }
-    }, [transcriptEntries, addToast, userApiKey]);
+    }, [transcriptEntries, addToast]);
 
 
     return {

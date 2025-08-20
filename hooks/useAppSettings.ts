@@ -1,5 +1,6 @@
 
 
+
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { THEME_PRESETS } from '../constants';
 import { type DiarizationSettings, type StatCardKey } from '../types';
@@ -79,17 +80,7 @@ const useAppSettings = () => {
       }
     };
     
-    const [userApiKey, _setUserApiKey] = useState<string | null>(() => localStorage.getItem('defscribe-userApiKey'));
     const [viewModeOverride, _setViewModeOverride] = useState<'desktop' | 'mobile' | null>(() => localStorage.getItem('defscribe-viewModeOverride') as 'desktop' | 'mobile' | null);
-
-    const setUserApiKey = (key: string | null) => {
-        _setUserApiKey(key);
-        if (key) {
-            localStorage.setItem('defscribe-userApiKey', key);
-        } else {
-            localStorage.removeItem('defscribe-userApiKey');
-        }
-    };
 
     const setViewModeOverride = (mode: 'desktop' | 'mobile' | null) => {
         _setViewModeOverride(mode);
@@ -219,8 +210,6 @@ const useAppSettings = () => {
         resetLayout,
         transcriptTextSize, 
         setTranscriptTextSize,
-        userApiKey,
-        setUserApiKey,
         statCardOrder,
         setStatCardOrder,
         viewModeOverride,

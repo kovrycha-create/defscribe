@@ -1,3 +1,5 @@
+
+
 import { GoogleGenAI, Type, GenerateContentResponse } from '@google/genai';
 import { type SummaryStyle, type Emotion, type ActionItem, type Snippet } from '../types';
 
@@ -5,11 +7,10 @@ const model = 'gemini-2.5-flash';
 
 // --- Helper for Gemini API calls ---
 async function callGemini<T>(
-    userApiKey: string,
     prompt: string | { parts: any[] },
     schema?: any
 ): Promise<T> {
-    const ai = new GoogleGenAI({ apiKey: userApiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const config = schema ? { responseMimeType: "application/json", responseSchema: schema } : {};
     
     const response: GenerateContentResponse = await ai.models.generateContent({
@@ -42,8 +43,7 @@ const newEmotions = [
     'sleepy', 'smug', 'surprised', 'talking', 'thinking'
 ];
 
-export const generateSummary = async (transcript: string, style: SummaryStyle, userApiKey: string | null): Promise<{ summary: string; emotion: Emotion }> => {
-    if (!userApiKey) return { summary: "Error: An API key is required for this feature.", emotion: 'sad' };
+export const generateSummary = async (transcript: string, style: SummaryStyle): Promise<{ summary: string; emotion: Emotion }> => {
     if (transcript.trim().length < 10) return { summary: "Not enough content to summarize.", emotion: 'confused' };
     
     try {
@@ -67,7 +67,7 @@ ${transcript}
             },
             required: ["summary", "emotion"],
         };
-        return await callGemini(userApiKey, prompt, schema);
+        return await callGemini(prompt, schema);
     } catch (e) {
         const message = e instanceof Error ? e.message : "Could not generate summary.";
         console.error("Summary generation failed:", e);
@@ -75,8 +75,7 @@ ${transcript}
     }
 };
 
-export const generateTopics = async (transcript: string, userApiKey: string | null): Promise<string[]> => {
-    if (!userApiKey) return [];
+export const generateTopics = async (transcript: string): Promise<string[]> => {
     if (transcript.trim().length < 50) return [];
     try {
         const prompt = `Identify the main topics discussed in the following transcript. List up to 5 key topics.
@@ -86,7 +85,7 @@ Transcript:
 ${transcript}
 ---`;
         const schema = { type: Type.ARRAY, items: { type: Type.STRING } };
-        const result = await callGemini<string[]>(userApiKey, prompt, schema);
+        const result = await callGemini<string[]>(prompt, schema);
         return Array.isArray(result) ? result : [];
     } catch(e) {
         console.error("Topic generation failed:", e);
@@ -94,8 +93,7 @@ ${transcript}
     }
 };
 
-export const generateActionItems = async (transcript: string, userApiKey: string | null): Promise<Omit<ActionItem, 'id'>[]> => {
-    if (!userApiKey) return [];
+export const generateActionItems = async (transcript: string): Promise<Omit<ActionItem, 'id'>[]> => {
     if (transcript.trim().length < 20) return [];
     try {
         const prompt = `Extract any action items or decisions from the following transcript. For each, identify the speaker by their label (e.g., "Speaker 1").
@@ -118,7 +116,7 @@ Each object should have a 'type' ("action" or "decision"), 'content' (the action
                 required: ['type', 'content']
             }
         };
-        const result = await callGemini<Omit<ActionItem, 'id'>[]>(userApiKey, prompt, schema);
+        const result = await callGemini<Omit<ActionItem, 'id'>[]>(prompt, schema);
         return Array.isArray(result) ? result : [];
     } catch (e) {
         console.error("Action item generation failed:", e);
@@ -126,8 +124,7 @@ Each object should have a 'type' ("action" or "decision"), 'content' (the action
     }
 };
 
-export const generateSnippets = async (transcript: string, userApiKey: string | null): Promise<Omit<Snippet, 'id'>[]> => {
-    if (!userApiKey) return [];
+export const generateSnippets = async (transcript: string): Promise<Omit<Snippet, 'id'>[]> => {
     if (transcript.trim().length < 50) return [];
     try {
         const prompt = `Extract key quotes, important questions, and noteworthy insights from the transcript. For each, identify the speaker by their label (e.g., "Speaker 1").
@@ -150,7 +147,7 @@ Each object should have a 'type' ("quote", "question", or "insight"), 'content' 
                 required: ['type', 'content']
             }
         };
-        const result = await callGemini<Omit<Snippet, 'id'>[]>(userApiKey, prompt, schema);
+        const result = await callGemini<Omit<Snippet, 'id'>[]>(prompt, schema);
         return Array.isArray(result) ? result : [];
     } catch(e) {
         console.error("Snippet generation failed:", e);
@@ -158,8 +155,7 @@ Each object should have a 'type' ("quote", "question", or "insight"), 'content' 
     }
 };
 
-export const translateText = async (text: string, language: string, userApiKey: string | null): Promise<string> => {
-    if (!userApiKey) return "Error: API key is not configured.";
+export const translateText = async (text: string, language: string): Promise<string> => {
     if (!text.trim()) return "";
     try {
         const prompt = `Translate the following text to ${language}:
@@ -167,7 +163,7 @@ export const translateText = async (text: string, language: string, userApiKey: 
 ---
 ${text}
 ---`;
-        const result = await callGemini<{ text: string }>(userApiKey, prompt);
+        const result = await callGemini<{ text: string }>(prompt);
         return result.text || "Translation failed.";
     } catch(e) {
         console.error("Translation failed:", e);
@@ -175,9 +171,7 @@ ${text}
     }
 };
 
-export const transcribeAudio = async (base64Audio: string, mimeType: string, userApiKey: string | null): Promise<string> => {
-    if (!userApiKey) return "Error: API key is not configured for transcription.";
-    
+export const transcribeAudio = async (base64Audio: string, mimeType: string): Promise<string> => {
     try {
         const audioPart = {
             inlineData: {
@@ -190,7 +184,7 @@ export const transcribeAudio = async (base64Audio: string, mimeType: string, use
 
         const textPart = { text: prompt };
 
-        const result = await callGemini<{ text: string }>(userApiKey, { parts: [audioPart, textPart] });
+        const result = await callGemini<{ text: string }>({ parts: [audioPart, textPart] });
         return result.text || "Cloud transcription failed to return text.";
 
     } catch(e) {
@@ -201,8 +195,7 @@ export const transcribeAudio = async (base64Audio: string, mimeType: string, use
 };
 
 
-export const detectLanguage = async (text: string, userApiKey: string | null): Promise<string | null> => {
-    if (!userApiKey) return null;
+export const detectLanguage = async (text: string): Promise<string | null> => {
     if (!text.trim() || text.trim().length < 10) return null;
     try {
         const prompt = `What language is this text? Respond with the IETF language tag (e.g., 'en-US', 'es-ES', 'ja-JP').
@@ -221,7 +214,7 @@ ${text}
             },
             required: ["languageTag"],
         };
-        const result = await callGemini<{ languageTag: string }>(userApiKey, prompt, schema);
+        const result = await callGemini<{ languageTag: string }>(prompt, schema);
         return result.languageTag ? result.languageTag.trim() : null;
     } catch(e) {
         console.error("Language detection failed:", e);

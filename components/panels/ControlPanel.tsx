@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import Tooltip from '../Tooltip';
 import { THEME_PRESETS, SPOKEN_LANGUAGES, SPOKEN_LANGUAGES_REVERSE } from '../../constants';
@@ -34,22 +35,15 @@ interface ControlPanelProps {
   setCustomThemeColors: (colors: { primary: string; secondary: string; accent: string; }) => void;
   diarizationSettings: DiarizationSettings;
   setDiarizationSettings: (settings: DiarizationSettings) => void;
-  showTimestamps: boolean;
-  setShowTimestamps: (show: boolean) => void;
   translationLanguage: string;
   setTranslationLanguage: (lang: string) => void;
   spokenLanguage: string;
   setSpokenLanguage: (lang: string) => void;
   liveTranslationEnabled: boolean;
   setLiveTranslationEnabled: (enabled: boolean) => void;
-  isRecordingEnabled: boolean;
-  setIsRecordingEnabled: (enabled: boolean) => void;
   onResetLayout: () => void;
   onExport: () => void;
   sessionActive: boolean;
-  userApiKey: string | null;
-  onUserApiKeyConnect: (key: string) => void;
-  onUserApiKeyDisconnect: () => void;
   shortcuts: Shortcut[];
 }
 
@@ -96,16 +90,14 @@ const HotkeysTooltipContent: React.FC<{ shortcuts: Shortcut[] }> = ({ shortcuts 
 
 const ControlPanel: React.FC<ControlPanelProps> = (props) => {
   const { isListening, isAnalyzing, isSummarizing, wpm, confidence, finalTranscript, onStart, onStop, onClear, onGoImmersive, isImmersiveButtonGlowing, isStartButtonGlowing,
-  themeId, setThemeId, customThemeColors, setCustomThemeColors, diarizationSettings, setDiarizationSettings, showTimestamps, setShowTimestamps,
+  themeId, setThemeId, customThemeColors, setCustomThemeColors, diarizationSettings, setDiarizationSettings,
   translationLanguage, setTranslationLanguage, spokenLanguage, setSpokenLanguage, 
   liveTranslationEnabled, setLiveTranslationEnabled,
-  isRecordingEnabled, setIsRecordingEnabled,
-  onResetLayout, onExport, sessionActive, userApiKey, onUserApiKeyConnect, onUserApiKeyDisconnect, shortcuts } = props;
+  onResetLayout, onExport, sessionActive, shortcuts } = props;
   
   const [isCustomThemeOpen, setIsCustomThemeOpen] = useState(false);
   const [isSettingsCollapsed, setIsSettingsCollapsed] = useState(false);
   const [isExportButtonFlashing, setIsExportButtonFlashing] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState('');
   const [isSpokenLanguageSelectOpen, setSpokenLanguageSelectOpen] = useState(false);
   const [isTranslationLanguageSelectOpen, setTranslationLanguageSelectOpen] = useState(false);
 
@@ -121,13 +113,6 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
     setTimeout(() => {
         setIsExportButtonFlashing(false);
     }, 500);
-  };
-
-  const handleConnectClick = () => {
-    if (apiKeyInput.trim()) {
-        onUserApiKeyConnect(apiKeyInput.trim());
-        setApiKeyInput('');
-    }
   };
 
   return (
@@ -177,7 +162,6 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
             text="Immersive Mode"
             onClick={onGoImmersive}
             className={`control-button ${isImmersiveButtonGlowing ? 'animate-cosmic-glow' : ''}`}
-            disabled={isListening}
         />
       </div>
       
@@ -223,27 +207,6 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
           className={`transition-all duration-500 ease-in-out ${isAnySelectOpen ? 'overflow-visible' : 'overflow-hidden'} ${isSettingsCollapsed ? 'max-h-0' : 'max-h-[1000px]'}`}
         >
           <div className="space-y-3 md:space-y-4 px-4 pb-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-400 mb-2">Gemini API Key</label>
-              {userApiKey ? (
-                  <div className="flex items-center gap-2">
-                      <p className="text-xs text-green-400 bg-green-900/50 px-2 py-1 rounded-md flex-1 truncate">Connected with your key</p>
-                      <button onClick={onUserApiKeyDisconnect} className="cosmo-button px-3 h-8 text-xs">Disconnect</button>
-                  </div>
-              ) : (
-                  <div className="flex items-center gap-2">
-                      <input
-                          type="password"
-                          value={apiKeyInput}
-                          onChange={(e) => setApiKeyInput(e.target.value)}
-                          placeholder="Enter your Gemini API key"
-                          className="w-full cosmo-input rounded-md text-sm p-2"
-                      />
-                      <button onClick={handleConnectClick} disabled={!apiKeyInput.trim()} className="cosmo-button px-3 h-9 text-sm flex-shrink-0 disabled:opacity-50">Connect</button>
-                  </div>
-              )}
-            </div>
-
             <div>
               <label className="block text-sm font-medium text-slate-400 mb-2">Theme</label>
               <div className="grid grid-cols-5 gap-2">
@@ -338,18 +301,6 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                 <label htmlFor="live-translation-toggle" className="text-sm font-medium text-slate-400">Live Translation</label>
                 <button onClick={() => setLiveTranslationEnabled(!liveTranslationEnabled)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${liveTranslationEnabled ? 'bg-[var(--color-primary)]' : 'bg-slate-600'}`}>
                     <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${liveTranslationEnabled ? 'translate-x-6' : 'translate-x-1'}`}/>
-                </button>
-            </div>
-            <div className="flex items-center justify-between">
-                <label htmlFor="timestamps-toggle" className="text-sm font-medium text-slate-400">Show Timestamps</label>
-                <button onClick={() => setShowTimestamps(!showTimestamps)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${showTimestamps ? 'bg-[var(--color-primary)]' : 'bg-slate-600'}`}>
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showTimestamps ? 'translate-x-6' : 'translate-x-1'}`}/>
-                </button>
-            </div>
-            <div className="flex items-center justify-between">
-                <label htmlFor="recording-toggle" className="text-sm font-medium text-slate-400">Audio Recording</label>
-                <button onClick={() => setIsRecordingEnabled(!isRecordingEnabled)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isRecordingEnabled ? 'bg-[var(--color-primary)]' : 'bg-slate-600'}`}>
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isRecordingEnabled ? 'translate-x-6' : 'translate-x-1'}`}/>
                 </button>
             </div>
             <button onClick={onResetLayout} className="control-button text-sm h-10 w-full rounded-lg flex items-center justify-center gap-2"><i className="fas fa-undo"></i> Reset Layout</button>

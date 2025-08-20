@@ -18,6 +18,7 @@ interface MainContentPanelProps {
   speakerProfiles: Record<SpeakerId, SpeakerProfile>;
   handleUpdateSpeakerLabel: (speakerId: SpeakerId, newLabel: string) => void;
   showTimestamps: boolean;
+  setShowTimestamps: (show: boolean) => void;
   diarizationEnabled: boolean;
   onOpenChat: () => void;
   onTranslateEntry: (entryId: string) => void;
@@ -38,7 +39,7 @@ interface MainContentPanelProps {
 
 const MainContentPanel: React.FC<MainContentPanelProps> = ({
   isListening, stream, themeColors, transcriptEntries, liveText, liveTextState,
-  activeSpeaker, speakerProfiles, handleUpdateSpeakerLabel, showTimestamps, diarizationEnabled, onOpenChat,
+  activeSpeaker, speakerProfiles, handleUpdateSpeakerLabel, showTimestamps, setShowTimestamps, diarizationEnabled, onOpenChat,
   onTranslateEntry, onReassignSpeaker, transcriptTextSize, setTranscriptTextSize,
   visualizerHeight, setVisualizerHeight, highlightedTopic, audioBlobUrl, onDeleteAudio,
   recordingDuration, onStop, onStart, isRecordingEnabled, setIsRecordingEnabled,
@@ -163,6 +164,11 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
 
             {/* Right: Controls */}
             <div className="flex w-full sm:w-auto items-center justify-center sm:justify-end gap-2 flex-shrink-0">
+                <Tooltip content={showTimestamps ? "Hide Timestamps" : "Show Timestamps"}>
+                    <button onClick={() => setShowTimestamps(!showTimestamps)} className={`h-10 w-10 flex-shrink-0 cosmo-button rounded-lg transition-colors flex items-center justify-center ${showTimestamps ? 'text-[var(--color-primary)]' : 'text-slate-400'}`}>
+                        <i className="fas fa-clock text-lg"></i>
+                    </button>
+                </Tooltip>
                 <Tooltip content={`Change to ${nextTextSizeLabel[transcriptTextSize]} text`}>
                     <button onClick={cycleTextSize} className="h-10 px-3 rounded-lg flex items-center justify-center gap-2 transition-colors cosmo-button">
                         <i className="fas fa-text-height"></i>

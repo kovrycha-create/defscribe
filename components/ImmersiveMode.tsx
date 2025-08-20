@@ -1,10 +1,10 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { type TranscriptEntry, type Emotion } from '../types';
 import Tooltip from './Tooltip';
 import CursorTrail from './CursorTrail';
 import { useKonamiCode } from '../hooks/useKonamiCode';
 import { AudioContextManager } from '../utils/AudioContextManager';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 
 interface ImmersiveModeProps {
   isListening: boolean;
@@ -464,6 +464,11 @@ const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEn
   const containerRef = useRef<HTMLDivElement>(null);
   const { analyser } = useAudioProcessor(isListening, stream);
 
+  const isSmScreen = useMediaQuery('(min-width: 640px)');
+  // text-lg has 1.75rem line-height. sm:text-2xl has 2rem line-height.
+  // The original container had space-y-2, which is a 0.5rem margin.
+  const itemTotalHeightRem = isSmScreen ? 2.0 + 0.5 : 1.75 + 0.5;
+
   useKonamiCode(() => {
     setIsRaveMode(true);
     setTimeout(() => setIsRaveMode(false), 5000);
@@ -681,8 +686,8 @@ const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEn
 
       <div className="absolute inset-0 flex flex-col items-center justify-end pointer-events-none z-50 pb-24 sm:pb-48">
         <div className="w-full max-w-4xl text-center space-y-2 p-2 sm:p-4">
-          <div className="h-48 text-lg sm:text-2xl text-slate-400 space-y-2 overflow-hidden flex flex-col justify-end">
-             {finalEntriesToShow.map(entry => {
+          <div className="h-48 text-lg sm:text-2xl text-slate-400 relative overflow-hidden">
+             {finalEntriesToShow.map((entry, index) => {
                 const isTheLatestEntry = entry.id === lastAddedEntryId;
                 const shouldHideTemporarily = isTheLatestEntry && liveTextState === 'holding';
                 
@@ -691,10 +696,13 @@ const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEn
                     animationClass = shouldHideTemporarily ? 'opacity-0' : 'animate-[slide-fade-in_0.6s_ease-out]';
                 }
 
+                const bottomRem = (finalEntriesToShow.length - 1 - index) * itemTotalHeightRem;
+
                 return (
                     <p
                         key={entry.id}
-                        className={`transition-all duration-500 ease-out ${animationClass}`}
+                        className={`transition-all duration-500 ease-out absolute left-0 right-0 ${animationClass}`}
+                        style={{ bottom: `${bottomRem}rem` }}
                     >
                         {entry.text}
                     </p>

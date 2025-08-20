@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import useSpeechRecognition from './hooks/useSpeechRecognition';
@@ -13,8 +14,6 @@ import ControlPanel from './components/panels/ControlPanel';
 import MainContentPanel from './components/panels/MainContentPanel';
 import AnalyticsPanel from './components/panels/AnalyticsPanel';
 import WelcomeModal from './components/WelcomeModal';
-import ApiStatusIndicator, { type ApiStatus } from './components/ApiStatusIndicator';
-import ApiKeyWarning from './components/ApiKeyWarning';
 
 import Toast, { type ToastMessage, type ToastType } from './components/Toast';
 import ImmersiveMode from './components/ImmersiveMode';
@@ -120,7 +119,6 @@ const App: React.FC = () => {
     isRecordingEnabled, setIsRecordingEnabled,
     leftPanelWidth, rightPanelWidth, handleMouseDown, resetLayout,
     transcriptTextSize, setTranscriptTextSize,
-    userApiKey, setUserApiKey,
     statCardOrder, setStatCardOrder,
     viewModeOverride, setViewModeOverride,
   } = useAppSettings();
@@ -132,13 +130,6 @@ const App: React.FC = () => {
     // Adjust visualizer height when view mode changes
     setVisualizerHeight(isMobileView ? SMALL_VISUALIZER_HEIGHT : LARGE_VISUALIZER_HEIGHT);
   }, [isMobileView]);
-
-  const [isApiKeyWarningVisible, setIsApiKeyWarningVisible] = useState(!userApiKey);
-  useEffect(() => {
-    setIsApiKeyWarningVisible(!userApiKey);
-  }, [userApiKey]);
-
-  const apiStatus: ApiStatus = userApiKey ? 'ok' : 'error';
   
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const addToast = useCallback((title: string, message: string, type: ToastType) => {
@@ -149,16 +140,6 @@ const App: React.FC = () => {
     });
   }, []);
   
-  const handleUserApiKeyConnect = (key: string) => {
-    setUserApiKey(key);
-    addToast('API Key Connected', 'Using your personal Gemini API key.', 'success');
-  };
-  
-  const handleUserApiKeyDisconnect = () => {
-    setUserApiKey(null);
-    addToast('API Key Disconnected', 'Please add a key to use AI features.', 'info');
-  };
-
   const handleCloseWelcomeModal = () => {
     setIsWelcomeModalOpen(false);
     // After a short delay (for modal fade-out), start glowing the button
@@ -183,9 +164,8 @@ const App: React.FC = () => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
-  const { isListening, transcript, finalTranscript, error, startListening, stopListening, clearTranscript, confidence, isCloudMode, stream, audioBlobUrl, deleteAudio, recordingDuration } = useSpeechRecognition({ 
+  const { isListening, transcript, finalTranscript, error, startListening, stopListening, clearTranscript, confidence, isCloudMode, stream, audioBlobUrl, deleteAudio, recordingDuration } = useSpeechRecognition({
     spokenLanguage,
-    userApiKey,
     addToast,
     isRecordingEnabled,
   });
@@ -202,13 +182,12 @@ const App: React.FC = () => {
     handleUpdateSpeakerLabel,
     handleReassignSpeakerForEntry,
     handleTranslateEntry,
-  } = useTranscript({ 
-      finalTranscript, 
-      diarizationSettings, 
+  } = useTranscript({
+      finalTranscript,
+      diarizationSettings,
       addToast,
       liveTranslationEnabled,
       translationLanguage,
-      userApiKey,
       isCloudMode,
       stream,
   });
@@ -222,12 +201,11 @@ const App: React.FC = () => {
     generateAllAnalytics,
     handleSummarize,
     clearAnalytics,
-  } = useAnalytics({ 
+  } = useAnalytics({
       addToast,
       transcriptEntries,
       startTime: startTimeRef.current,
       segments,
-      userApiKey,
       isListening,
       interimTranscript: transcript,
   });
@@ -288,6 +266,7 @@ const App: React.FC = () => {
 
   const shortcutsForTooltip = [
     { key: ' ', description: 'Toggle recording' },
+    { key: 'm', ctrl: true, description: 'Toggle Audio Recording' },
     { key: 'i', ctrl: true, description: 'Toggle immersive mode' },
     { key: 'c', ctrl: true, shift: true, description: 'Clear session' },
     { key: '/', ctrl: true, description: 'Toggle chat' },
@@ -298,6 +277,7 @@ const App: React.FC = () => {
 
   useKeyboardNavigation([
     { key: ' ', handler: () => isListening ? handleStop() : handleStart(), description: 'Toggle recording' },
+    { key: 'm', ctrl: true, handler: () => setIsRecordingEnabled(!isRecordingEnabled), description: 'Toggle audio recording' },
     { key: 'i', ctrl: true, handler: () => setIsImmersive(!isImmersive), description: 'Toggle immersive mode' },
     { key: 'c', ctrl: true, shift: true, handler: handleClear, description: 'Clear session' },
     { key: '/', ctrl: true, handler: () => setIsChatOpen(!isChatOpen), description: 'Toggle chat' },
@@ -306,7 +286,7 @@ const App: React.FC = () => {
   if (isImmersive) {
     return (
       <ErrorBoundary>
-        <ImmersiveMode 
+        <ImmersiveMode
           isListening={isListening}
           transcriptEntries={transcriptEntries}
           interimTranscript={transcript}
@@ -334,10 +314,7 @@ const App: React.FC = () => {
         confirmText="Clear Session"
       />
 
-      {isApiKeyWarningVisible && <ApiKeyWarning onClose={() => setIsApiKeyWarningVisible(false)} />}
-      
       <div className="fixed bottom-4 right-4 z-[100] flex items-center gap-3">
-        <ApiStatusIndicator apiStatus={apiStatus} userApiKey={userApiKey} />
         {!isSystemMobile && (
           <ViewSwitcher
             viewModeOverride={viewModeOverride}
@@ -350,9 +327,9 @@ const App: React.FC = () => {
         {toasts.map((toast) => <Toast key={toast.id} toast={toast} onDismiss={dismissToast} />)}
       </div>
       
-      {isChatOpen && <TranscriptChat transcript={fullTranscriptText} onClose={() => setIsChatOpen(false)} translationLanguage={translationLanguage} userApiKey={userApiKey} />}
-      <ExportModal 
-        isOpen={isExportModalOpen} 
+      {isChatOpen && <TranscriptChat transcript={fullTranscriptText} onClose={() => setIsChatOpen(false)} translationLanguage={translationLanguage} />}
+      <ExportModal
+        isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
         transcriptEntries={transcriptEntries}
         speakerProfiles={speakerProfiles}
@@ -371,7 +348,7 @@ const App: React.FC = () => {
           style={!isMobileView ? { gridTemplateColumns: `minmax(0, ${leftPanelWidth}px) 5px minmax(0, 1fr) 5px minmax(0, ${rightPanelWidth}px)`, gridTemplateRows: 'minmax(0, 1fr)' } : {}}
         >
           <div className={`${isMobileView ? (activeMobileTab === 'controls' ? 'block' : 'hidden') : 'block'} h-full`}>
-            <ControlPanel 
+            <ControlPanel
               isListening={isListening}
               isAnalyzing={isAnalyzing}
               isSummarizing={isSummarizing}
@@ -390,22 +367,15 @@ const App: React.FC = () => {
               setCustomThemeColors={setCustomThemeColors}
               diarizationSettings={diarizationSettings}
               setDiarizationSettings={setDiarizationSettings}
-              showTimestamps={showTimestamps}
-              setShowTimestamps={setShowTimestamps}
               translationLanguage={translationLanguage}
               setTranslationLanguage={setTranslationLanguage}
               spokenLanguage={spokenLanguage}
               setSpokenLanguage={setSpokenLanguage}
               liveTranslationEnabled={liveTranslationEnabled}
               setLiveTranslationEnabled={setLiveTranslationEnabled}
-              isRecordingEnabled={isRecordingEnabled}
-              setIsRecordingEnabled={setIsRecordingEnabled}
               onResetLayout={handleResetLayout}
               onExport={() => setIsExportModalOpen(true)}
               sessionActive={sessionActive}
-              userApiKey={userApiKey}
-              onUserApiKeyConnect={handleUserApiKeyConnect}
-              onUserApiKeyDisconnect={handleUserApiKeyDisconnect}
               shortcuts={shortcutsForTooltip}
             />
           </div>
@@ -425,6 +395,7 @@ const App: React.FC = () => {
               speakerProfiles={speakerProfiles}
               handleUpdateSpeakerLabel={handleUpdateSpeakerLabel}
               showTimestamps={showTimestamps}
+              setShowTimestamps={setShowTimestamps}
               diarizationEnabled={diarizationSettings.enabled}
               onOpenChat={() => setIsChatOpen(true)}
               onTranslateEntry={(entryId) => handleTranslateEntry(entryId, translationLanguage)}
@@ -467,7 +438,7 @@ const App: React.FC = () => {
             />
           </div>
         </main>
-        {isMobileView && <BottomNav 
+        {isMobileView && <BottomNav
             activeTab={activeMobileTab}
             onTabChange={setActiveMobileTab}
             actionItemsCount={actionItems.length}

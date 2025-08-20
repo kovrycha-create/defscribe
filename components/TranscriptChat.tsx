@@ -10,10 +10,9 @@ interface TranscriptChatProps {
   transcript: string;
   onClose: () => void;
   translationLanguage: string;
-  userApiKey: string | null;
 }
 
-const TranscriptChat: React.FC<TranscriptChatProps> = ({ transcript, onClose, translationLanguage, userApiKey }) => {
+const TranscriptChat: React.FC<TranscriptChatProps> = ({ transcript, onClose, translationLanguage }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -80,10 +79,6 @@ const TranscriptChat: React.FC<TranscriptChatProps> = ({ transcript, onClose, tr
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
-    if (!userApiKey) {
-        setMessages(prev => [...prev, { id: `error-${Date.now()}`, role: 'model', text: 'Error: An API key is required for chat. Please add your key in the main settings panel.' }]);
-        return;
-    }
 
     setAutoScroll(true);
     
@@ -96,7 +91,7 @@ const TranscriptChat: React.FC<TranscriptChatProps> = ({ transcript, onClose, tr
     setMessages(prev => [...prev, { id: modelMessageId, role: 'model', text: '', isLoading: true }]);
 
     try {
-        const ai = new GoogleGenAI({ apiKey: userApiKey });
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const chat = ai.chats.create({
             model: 'gemini-2.5-flash',
             config: {
@@ -178,7 +173,7 @@ const TranscriptChat: React.FC<TranscriptChatProps> = ({ transcript, onClose, tr
     if (isTranslatingId) return;
     setIsTranslatingId(messageId);
     try {
-        const translated = await translateText(text, translationLanguage, userApiKey);
+        const translated = await translateText(text, translationLanguage);
         setMessages(prev => prev.map(msg => 
             msg.id === messageId ? { ...msg, translatedText: translated } : msg
         ));
@@ -190,7 +185,7 @@ const TranscriptChat: React.FC<TranscriptChatProps> = ({ transcript, onClose, tr
     } finally {
         setIsTranslatingId(null);
     }
-  }, [translationLanguage, isTranslatingId, userApiKey]);
+  }, [translationLanguage, isTranslatingId]);
 
 
   return (
