@@ -1,0 +1,7 @@
+{
+  "name": "DefScribe AI",
+  "description": "Boost productivity with DefScribe AI. Get instant, accurate transcriptions, AI summaries, speaker detection, and live translations. Your advanced voice dictation assistant.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
