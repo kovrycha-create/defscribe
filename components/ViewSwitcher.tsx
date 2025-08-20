@@ -22,7 +22,7 @@ const ViewSwitcher: React.FC<ViewSwitcherProps> = ({ viewModeOverride, setViewMo
   const icon = isMobileView ? 'fa-desktop' : 'fa-mobile-alt';
 
   return (
-    <Tooltip text={tooltipText} position="left">
+    <Tooltip content={tooltipText}>
       <button
         onClick={handleClick}
         className="w-8 h-8 rounded-full bg-slate-700/50 text-slate-300 hover:bg-slate-700/80 transition-colors flex items-center justify-center shadow-lg"

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { type TranscriptEntry, type Emotion } from '../types';
 import Tooltip from './Tooltip';
@@ -394,7 +395,7 @@ const EnhancedVisualizer: React.FC<{ analyser: AnalyserNode | null; themeColors:
 });
 
 const MenuButton: React.FC<{text: string; onClick: () => void; icon: string; isSpecial?: 'red' | 'green'; isActive?: boolean;}> = ({text, onClick, icon, isSpecial, isActive}) => (
-    <Tooltip text={text} position="bottom">
+    <Tooltip content={text}>
         <button onClick={onClick} className={`w-14 h-12 text-lg sm:w-20 sm:h-16 sm:text-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 rounded-xl
             ${isSpecial === 'red' ? 'bg-red-500/80 hover:bg-red-500' :
             isSpecial === 'green' ? 'bg-green-500/80 hover:bg-green-500' :
@@ -617,7 +618,7 @@ const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEn
                     <div className="flex items-center gap-2">
                         <span className="font-semibold text-sm w-16 sm:w-20 text-slate-300">Avatar:</span>
                         <input type="range" min="0.5" max="3.5" step="0.1" value={avatarSize} onChange={(e) => setAvatarSize(parseFloat(e.target.value))} className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-[var(--color-primary)]"/>
-                        <Tooltip text={showAvatar ? "Hide" : "Show"}><button onClick={() => setShowAvatar(!showAvatar)} className={`w-8 h-8 text-lg rounded-lg transition-colors flex-shrink-0 ${showAvatar ? 'bg-[var(--color-primary)]/30' : 'bg-slate-700/50'} hover:bg-slate-700/80`}><i className="fas fa-user-circle"></i></button></Tooltip>
+                        <Tooltip content={showAvatar ? "Hide" : "Show"}><button onClick={() => setShowAvatar(!showAvatar)} className={`w-8 h-8 text-lg rounded-lg transition-colors flex-shrink-0 ${showAvatar ? 'bg-[var(--color-primary)]/30' : 'bg-slate-700/50'} hover:bg-slate-700/80`}><i className="fas fa-user-circle"></i></button></Tooltip>
                     </div>
                     <div className="flex items-center gap-2">
                          <span className="font-semibold text-sm w-16 sm:w-20 text-slate-300">Visualizer:</span>
@@ -635,7 +636,7 @@ const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEn
           </div>
       ) : (
           <div className="fixed top-4 left-4 z-[100]">
-            <Tooltip text="Show Menu (M)" position="right">
+            <Tooltip content="Show Menu (M)">
                 <button onClick={() => setIsMenuOpen(true)} className="w-12 h-12 text-xl sm:w-14 sm:h-14 sm:text-2xl rounded-full bg-black/30 backdrop-blur-md flex items-center justify-center border border-slate-700/50 shadow-lg hover:bg-slate-700/80 transition-colors animate-cosmic-glow">
                     <i className="fas fa-bars"></i>
                 </button>

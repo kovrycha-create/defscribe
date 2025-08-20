@@ -36,7 +36,7 @@ const ApiStatusIndicator: React.FC<ApiStatusIndicatorProps> = ({ apiStatus, user
 
     return (
         <div className="relative flex items-center justify-center">
-            <Tooltip text={statusInfo.tooltip} position="left">
+            <Tooltip content={statusInfo.tooltip}>
                 <div className={`w-4 h-4 rounded-full ${statusInfo.colorClass} ${statusInfo.animationClass}`} />
             </Tooltip>
         </div>

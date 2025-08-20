@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { type TranscriptEntry, type SpeakerProfile, type SpeakerId } from '../types';
 import Tooltip from './Tooltip';
@@ -5,7 +6,7 @@ import Tooltip from './Tooltip';
 const SpeakerTag: React.FC<{ profile: SpeakerProfile; onClick: (speakerId: SpeakerId) => void }> = ({ profile, onClick }) => {
   const speakerNum = profile.id.replace('S', '');
   return (
-    <Tooltip text={`Edit ${profile.label}`} position="right">
+    <Tooltip content={`Edit ${profile.label}`}>
       <button 
         onClick={() => onClick(profile.id)}
         className="w-8 h-8 text-xs font-bold flex items-center justify-center flex-shrink-0 text-white shadow-md transition-all duration-300 hover:scale-110 hover:animate-[pulse-glow_1.5s_ease-in-out_infinite] hex-clip"
@@ -212,7 +213,7 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
                 </div>
             </div>
             <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity z-30">
-                <Tooltip text="Actions" position="left">
+                <Tooltip content="Actions">
                     <button 
                       onClick={(e) => { 
                         e.stopPropagation(); 

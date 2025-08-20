@@ -6,6 +6,15 @@ import { type DiarizationSettings } from '../../types';
 import BackgroundPenLogo from '../BackgroundPenLogo';
 import CustomSelect from '../CustomSelect';
 
+interface Shortcut {
+  key: string;
+  ctrl?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+  meta?: boolean;
+  description?: string;
+}
+
 interface ControlPanelProps {
   isListening: boolean;
   isAnalyzing: boolean;
@@ -33,12 +42,15 @@ interface ControlPanelProps {
   setSpokenLanguage: (lang: string) => void;
   liveTranslationEnabled: boolean;
   setLiveTranslationEnabled: (enabled: boolean) => void;
+  isRecordingEnabled: boolean;
+  setIsRecordingEnabled: (enabled: boolean) => void;
   onResetLayout: () => void;
   onExport: () => void;
   sessionActive: boolean;
   userApiKey: string | null;
   onUserApiKeyConnect: (key: string) => void;
   onUserApiKeyDisconnect: () => void;
+  shortcuts: Shortcut[];
 }
 
 const IconButton: React.FC<{ icon: string; text: string; onClick: () => void; className?: string; disabled?: boolean; }> = ({ icon, text, onClick, className = '', disabled }) => (
@@ -54,12 +66,41 @@ const IconButton: React.FC<{ icon: string; text: string; onClick: () => void; cl
     </button>
 );
 
+const HotkeysTooltipContent: React.FC<{ shortcuts: Shortcut[] }> = ({ shortcuts }) => {
+    const formatShortcut = (s: Shortcut) => {
+        const parts = [];
+        if (s.ctrl) parts.push('Ctrl');
+        if (s.shift) parts.push('Shift');
+        if (s.alt) parts.push('Alt');
+        parts.push(s.key.trim() === '' ? 'Space' : s.key.toUpperCase());
+        return parts.join(' + ');
+    };
+
+    return (
+        <div className="p-2 text-left">
+            <h4 className="font-bold text-base mb-2 text-white">Keyboard Shortcuts</h4>
+            <ul className="space-y-1.5 text-xs">
+                {shortcuts.map((s, i) => (
+                    <li key={i} className="flex justify-between items-center gap-4">
+                        <span className="text-slate-300">{s.description}</span>
+                        <kbd className="px-2 py-1 font-sans text-xs font-semibold text-slate-200 bg-slate-700 border border-slate-600 rounded-md shadow-sm">
+                            {formatShortcut(s)}
+                        </kbd>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+};
+
+
 const ControlPanel: React.FC<ControlPanelProps> = (props) => {
   const { isListening, isAnalyzing, isSummarizing, wpm, confidence, finalTranscript, onStart, onStop, onClear, onGoImmersive, isImmersiveButtonGlowing, isStartButtonGlowing,
   themeId, setThemeId, customThemeColors, setCustomThemeColors, diarizationSettings, setDiarizationSettings, showTimestamps, setShowTimestamps,
   translationLanguage, setTranslationLanguage, spokenLanguage, setSpokenLanguage, 
   liveTranslationEnabled, setLiveTranslationEnabled,
-  onResetLayout, onExport, sessionActive, userApiKey, onUserApiKeyConnect, onUserApiKeyDisconnect } = props;
+  isRecordingEnabled, setIsRecordingEnabled,
+  onResetLayout, onExport, sessionActive, userApiKey, onUserApiKeyConnect, onUserApiKeyDisconnect, shortcuts } = props;
   
   const [isCustomThemeOpen, setIsCustomThemeOpen] = useState(false);
   const [isSettingsCollapsed, setIsSettingsCollapsed] = useState(false);
@@ -154,13 +195,28 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
 
       <div className="pt-4 border-t border-[rgba(var(--color-primary-rgb),0.2)] bg-[rgba(var(--color-primary-rgb),0.1)] rounded-lg">
         <div 
-          className="px-4 pb-2 text-sm font-semibold text-slate-300 uppercase tracking-wider flex justify-between items-center cursor-pointer"
-          onClick={() => setIsSettingsCollapsed(!isSettingsCollapsed)}
-          aria-expanded={!isSettingsCollapsed}
-          aria-controls="settings-panel"
+          className="px-4 pb-2 text-sm font-semibold text-slate-300 uppercase tracking-wider flex justify-between items-center"
         >
-          <span>Settings</span>
-          <i className={`fas fa-chevron-down transition-transform duration-300 ${isSettingsCollapsed ? 'rotate-180' : ''}`}></i>
+          <div
+            className="flex-1 cursor-pointer flex items-center gap-2"
+            onClick={() => setIsSettingsCollapsed(!isSettingsCollapsed)}
+            aria-expanded={!isSettingsCollapsed}
+            aria-controls="settings-panel"
+          >
+            <span>Settings</span>
+          </div>
+           <div className="flex items-center gap-3">
+            <Tooltip
+                content={<HotkeysTooltipContent shortcuts={shortcuts} />}
+                contentClassName="w-72 whitespace-normal"
+            >
+                <i className="fas fa-keyboard text-slate-400 hover:text-white cursor-help"></i>
+            </Tooltip>
+            <i 
+                className={`fas fa-chevron-down transition-transform duration-300 cursor-pointer ${isSettingsCollapsed ? 'rotate-180' : ''}`}
+                onClick={() => setIsSettingsCollapsed(!isSettingsCollapsed)}
+            ></i>
+          </div>
         </div>
         <div 
           id="settings-panel"
@@ -192,7 +248,7 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
               <label className="block text-sm font-medium text-slate-400 mb-2">Theme</label>
               <div className="grid grid-cols-5 gap-2">
                   {Object.entries(THEME_PRESETS).map(([idStr, theme]) => (
-                      <Tooltip text={`Theme ${idStr}`} key={idStr}>
+                      <Tooltip content={`Theme ${idStr}`} key={idStr}>
                           <button
                               onClick={() => { setThemeId(Number(idStr)); setIsCustomThemeOpen(false); }}
                               className={`h-8 w-full rounded-lg transition-all duration-200 ${Number(idStr) === themeId ? 'ring-2 ring-offset-2 ring-offset-[var(--color-bg-deep)] ring-white' : ''}`}
@@ -201,7 +257,7 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                           />
                       </Tooltip>
                   ))}
-                   <Tooltip text="Custom Theme">
+                   <Tooltip content="Custom Theme">
                       <button
                           onClick={() => { setThemeId(5); setIsCustomThemeOpen(prev => !prev); }}
                           className={`h-8 w-full rounded-lg transition-all duration-200 flex items-center justify-center ${5 === themeId ? 'ring-2 ring-offset-2 ring-offset-[var(--color-bg-deep)] ring-white' : ''}`}
@@ -288,6 +344,12 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                 <label htmlFor="timestamps-toggle" className="text-sm font-medium text-slate-400">Show Timestamps</label>
                 <button onClick={() => setShowTimestamps(!showTimestamps)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${showTimestamps ? 'bg-[var(--color-primary)]' : 'bg-slate-600'}`}>
                     <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showTimestamps ? 'translate-x-6' : 'translate-x-1'}`}/>
+                </button>
+            </div>
+            <div className="flex items-center justify-between">
+                <label htmlFor="recording-toggle" className="text-sm font-medium text-slate-400">Audio Recording</label>
+                <button onClick={() => setIsRecordingEnabled(!isRecordingEnabled)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${isRecordingEnabled ? 'bg-[var(--color-primary)]' : 'bg-slate-600'}`}>
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isRecordingEnabled ? 'translate-x-6' : 'translate-x-1'}`}/>
                 </button>
             </div>
             <button onClick={onResetLayout} className="control-button text-sm h-10 w-full rounded-lg flex items-center justify-center gap-2"><i className="fas fa-undo"></i> Reset Layout</button>

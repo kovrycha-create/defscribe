@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { type SpeakerProfile, type SpeakerId, type SpeechAnalytics } from '../types';
 import Tooltip from './Tooltip';
@@ -29,7 +30,7 @@ const TalkTimeVisualizer: React.FC<TalkTimeVisualizerProps> = ({ talkTimeData, s
           const profile = speakerProfiles[speakerId];
           if (!profile) return null;
           return (
-            <Tooltip key={speakerId} text={`${profile.label} (${percentage.toFixed(1)}%)`} position="top">
+            <Tooltip key={speakerId} content={`${profile.label} (${percentage.toFixed(1)}%)`}>
               <div className="flex items-center gap-2 text-sm w-full">
                 <div 
                   className="w-4 h-4 rounded-full flex-shrink-0 hex-clip"

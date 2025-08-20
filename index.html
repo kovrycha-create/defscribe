@@ -572,6 +572,66 @@
         from { width: 100%; }
         to { width: 0%; }
       }
+
+      /* Custom Volume Slider */
+      .custom-volume-slider {
+        -webkit-appearance: none;
+        appearance: none;
+        background: transparent;
+        cursor: pointer;
+      }
+
+      /* Webkit Track */
+      .custom-volume-slider::-webkit-slider-runnable-track {
+        width: 100%;
+        height: 6px; /* h-1.5 */
+        background: rgb(51, 65, 85); /* slate-700 */
+        border-radius: 0.5rem; /* rounded-lg */
+      }
+
+      /* Webkit Thumb */
+      .custom-volume-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        margin-top: -4px; /* (track_height - thumb_height) / 2 */
+        height: 14px;
+        width: 14px;
+        background-color: var(--color-primary);
+        border-radius: 9999px;
+        transition: all 0.2s ease-in-out;
+      }
+
+      .group:hover .custom-volume-slider::-webkit-slider-thumb {
+        height: 18px;
+        width: 18px;
+        margin-top: -6px; /* (6 - 18) / 2 */
+        box-shadow: 0 0 10px rgba(var(--color-primary-rgb), 0.5);
+      }
+
+      /* Mozilla Track */
+      .custom-volume-slider::-moz-range-track {
+        width: 100%;
+        height: 6px;
+        background: rgb(51, 65, 85);
+        border-radius: 0.5rem;
+        border: none;
+      }
+
+      /* Mozilla Thumb */
+      .custom-volume-slider::-moz-range-thumb {
+        height: 14px;
+        width: 14px;
+        background-color: var(--color-primary);
+        border-radius: 9999px;
+        border: none;
+        transition: all 0.2s ease-in-out;
+      }
+
+      .group:hover .custom-volume-slider::-moz-range-thumb {
+        height: 18px;
+        width: 18px;
+        box-shadow: 0 0 10px rgba(var(--color-primary-rgb), 0.5);
+      }
     </style>
   <script type="importmap">
 {
@@ -585,7 +645,8 @@
     "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.0.0",
     "vite": "https://esm.sh/vite@^7.1.2",
     "jspdf": "https://esm.sh/jspdf@2.5.1",
-    "@google/genai": "https://esm.sh/@google/genai@^1.15.0"
+    "@google/genai": "https://esm.sh/@google/genai@^1.15.0",
+    "react-dom": "https://esm.sh/react-dom@^19.1.1"
   }
 }
 </script>

@@ -1,4 +1,5 @@
 
+
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { THEME_PRESETS } from '../constants';
 import { type DiarizationSettings, type StatCardKey } from '../types';
@@ -68,6 +69,15 @@ const useAppSettings = () => {
             return { primary: '#1E90FF', secondary: '#FF69B4', accent: '#FFD700' };
         }
     };
+
+    const getInitialBoolean = (key: string, defaultValue: boolean): boolean => {
+      try {
+          const saved = localStorage.getItem(key);
+          return saved !== null ? saved === 'true' : defaultValue;
+      } catch {
+          return defaultValue;
+      }
+    };
     
     const [userApiKey, _setUserApiKey] = useState<string | null>(() => localStorage.getItem('defscribe-userApiKey'));
     const [viewModeOverride, _setViewModeOverride] = useState<'desktop' | 'mobile' | null>(() => localStorage.getItem('defscribe-viewModeOverride') as 'desktop' | 'mobile' | null);
@@ -120,6 +130,14 @@ const useAppSettings = () => {
     const [spokenLanguage, _setSpokenLanguage] = useState('en-US');
     const [liveTranslationEnabled, setLiveTranslationEnabled] = useState(false);
     const [transcriptTextSize, setTranscriptTextSize] = useState<'sm' | 'base' | 'lg' | 'xl'>('base');
+    const [isRecordingEnabled, _setIsRecordingEnabled] = useState(() => getInitialBoolean('defscribe-isRecordingEnabled', true));
+
+    const setIsRecordingEnabled = (enabled: boolean) => {
+        _setIsRecordingEnabled(enabled);
+        try {
+            localStorage.setItem('defscribe-isRecordingEnabled', String(enabled));
+        } catch {}
+    };
 
     const { leftPanelWidth, rightPanelWidth, handleMouseDown, resetLayout } = useResizablePanels(320, 400, 280, 500);
 
@@ -193,6 +211,8 @@ const useAppSettings = () => {
         setSpokenLanguage,
         liveTranslationEnabled,
         setLiveTranslationEnabled,
+        isRecordingEnabled,
+        setIsRecordingEnabled,
         leftPanelWidth,
         rightPanelWidth,
         handleMouseDown,

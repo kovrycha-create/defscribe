@@ -19,6 +19,7 @@ interface UseTranscriptProps {
     translationLanguage: string;
     userApiKey: string | null;
     isCloudMode: boolean;
+    stream: MediaStream | null;
 }
 
 const useTranscript = ({ 
@@ -29,8 +30,8 @@ const useTranscript = ({
     translationLanguage,
     userApiKey,
     isCloudMode,
+    stream,
 }: UseTranscriptProps) => {
-    const [stream, setStream] = useState<MediaStream | null>(null);
     const [transcriptEntries, setTranscriptEntries] = useState<TranscriptEntry[]>([]);
     const [speakerProfiles, setSpeakerProfiles] = useState<Record<SpeakerId, SpeakerProfile>>({});
     const startTimeRef = useRef<number | null>(null);
@@ -212,8 +213,6 @@ const useTranscript = ({
 
 
     return {
-        stream,
-        setStream,
         transcriptEntries,
         activeSpeaker,
         speakerProfiles,

@@ -36,9 +36,8 @@ const ToggleIcon: React.FC<{
   icon: string; 
   enabled: boolean; 
   onChange: () => void;
-  tooltipPosition: 'top' | 'bottom' | 'left' | 'right';
-}> = ({label, icon, enabled, onChange, tooltipPosition}) => (
-  <Tooltip text={label} position={tooltipPosition}>
+}> = ({label, icon, enabled, onChange}) => (
+  <Tooltip content={label}>
     <button onClick={onChange} className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${enabled ? 'bg-[var(--color-primary)] text-black font-bold' : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700/80'}`}>
       <i className={`fas ${icon}`}></i>
     </button>
@@ -76,7 +75,6 @@ const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColor
   const nexusTendrils = useRef<Tendril[]>([]);
 
   const isSmall = height < SMALL_VISUALIZER_HEIGHT_THRESHOLD;
-  const tooltipPosition = isSmall ? 'bottom' : 'top';
 
   const handleStyleToggle = (style: VisualizerStyle) => {
     setActiveStyles(prev => ({ ...prev, [style]: !prev[style] }));
@@ -245,13 +243,13 @@ const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColor
       <canvas ref={canvasRef} className="w-full h-full" />
       <div className={`absolute right-2 transition-transform duration-300 transform-gpu ${isSmall ? 'top-2 origin-top-right' : 'bottom-2 origin-bottom-right'} ${showControls ? 'scale-100 opacity-100' : 'scale-0 opacity-0 pointer-events-none'}`}>
         <div className="bg-slate-900/80 backdrop-blur-md p-2 rounded-lg border border-slate-700/50 shadow-xl flex items-center gap-2">
-          <ToggleIcon label="Wave" icon="fa-wave-square" enabled={activeStyles.wave} onChange={() => handleStyleToggle('wave')} tooltipPosition={tooltipPosition} />
-          <ToggleIcon label="Bars" icon="fa-chart-bar" enabled={activeStyles.bars} onChange={() => handleStyleToggle('bars')} tooltipPosition={tooltipPosition} />
-          <ToggleIcon label="Nexus" icon="fa-atom" enabled={activeStyles.nexus} onChange={() => handleStyleToggle('nexus')} tooltipPosition={tooltipPosition} />
-          <ToggleIcon label="Classic" icon="fa-align-left fa-rotate-270" enabled={activeStyles.classic} onChange={() => handleStyleToggle('classic')} tooltipPosition={tooltipPosition} />
+          <ToggleIcon label="Wave" icon="fa-wave-square" enabled={activeStyles.wave} onChange={() => handleStyleToggle('wave')} />
+          <ToggleIcon label="Bars" icon="fa-chart-bar" enabled={activeStyles.bars} onChange={() => handleStyleToggle('bars')} />
+          <ToggleIcon label="Nexus" icon="fa-atom" enabled={activeStyles.nexus} onChange={() => handleStyleToggle('nexus')} />
+          <ToggleIcon label="Classic" icon="fa-align-left fa-rotate-270" enabled={activeStyles.classic} onChange={() => handleStyleToggle('classic')} />
           <div className="w-px h-8 bg-slate-700/50 mx-1" />
           <div className="flex items-center gap-2 w-28">
-              <Tooltip text="Sensitivity" position={tooltipPosition}>
+              <Tooltip content="Sensitivity">
                   <i className="fas fa-sliders-h text-slate-300"></i>
               </Tooltip>
               <input type="range" min="0.2" max="2.5" step="0.1" value={sensitivity} onChange={(e) => setSensitivity(parseFloat(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-[var(--color-primary)]"/>

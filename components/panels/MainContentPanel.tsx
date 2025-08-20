@@ -3,6 +3,8 @@ import Visualizer from '../Visualizer';
 import TranscriptDisplay from '../TranscriptDisplay';
 import Tooltip from '../Tooltip';
 import SpeakerEditorModal from '../SpeakerEditorModal';
+import AudioPlayer from '../AudioPlayer';
+import RecordingControls from '../RecordingControls';
 import { type TranscriptEntry, type SpeakerId, type SpeakerProfile } from '../../types';
 
 interface MainContentPanelProps {
@@ -25,13 +27,21 @@ interface MainContentPanelProps {
   visualizerHeight: number;
   setVisualizerHeight: React.Dispatch<React.SetStateAction<number>>;
   highlightedTopic: string | null;
+  audioBlobUrl: string | null;
+  onDeleteAudio: () => void;
+  recordingDuration: number;
+  onStop: () => void;
+  onStart: () => void;
+  isRecordingEnabled: boolean;
+  setIsRecordingEnabled: (enabled: boolean) => void;
 }
 
 const MainContentPanel: React.FC<MainContentPanelProps> = ({
   isListening, stream, themeColors, transcriptEntries, liveText, liveTextState,
   activeSpeaker, speakerProfiles, handleUpdateSpeakerLabel, showTimestamps, diarizationEnabled, onOpenChat,
   onTranslateEntry, onReassignSpeaker, transcriptTextSize, setTranscriptTextSize,
-  visualizerHeight, setVisualizerHeight, highlightedTopic
+  visualizerHeight, setVisualizerHeight, highlightedTopic, audioBlobUrl, onDeleteAudio,
+  recordingDuration, onStop, onStart, isRecordingEnabled, setIsRecordingEnabled,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingSpeaker, setEditingSpeaker] = useState<SpeakerProfile | null>(null);
@@ -118,45 +128,68 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
   return (
     <>
       <div className="flex flex-col h-full cosmo-panel md:rounded-2xl p-2 md:p-4 gap-4">
-        <header className="flex flex-col sm:flex-row items-center justify-between pb-2 border-b border-[rgba(var(--color-primary-rgb),0.2)] z-10 gap-2">
-          <div className="relative w-full sm:flex-1 sm:mr-4">
-            <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-            <input
-              type="text"
-              placeholder="Search transcript..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full cosmo-input rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none"
-            />
-          </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-around">
-            <Tooltip text={`Change to ${nextTextSizeLabel[transcriptTextSize]} text`} position="bottom">
-                <button onClick={cycleTextSize} className="h-10 px-3 rounded-lg flex items-center justify-center gap-2 transition-colors cosmo-button flex-1 sm:flex-none">
-                    <i className="fas fa-text-height"></i>
-                    <span className="text-xs font-semibold w-12 text-center">{textSizeLabels[transcriptTextSize]}</span>
-                </button>
-            </Tooltip>
-            <Tooltip text={autoScroll ? "Auto-scroll On" : "Scroll to Bottom"} position="bottom">
-              <button 
-                onClick={handleAutoScrollClick} 
-                className={`h-10 w-10 flex-shrink-0 cosmo-button rounded-lg transition-all flex items-center justify-center ${autoScroll ? 'text-[var(--color-primary)]' : `text-slate-400 ${newContentSinceScroll ? 'animate-cosmic-glow' : ''}`}`}
-              >
-                <i className={`fas ${autoScroll ? 'fa-anchor' : 'fa-arrow-down'}`}></i>
-              </button>
-            </Tooltip>
-            <Tooltip text="Chat with Transcript" position="bottom">
-              <button onClick={onOpenChat} className="h-10 w-10 flex-shrink-0 cosmo-button rounded-lg transition-colors flex items-center justify-center">
-                <i className="fas fa-comments text-lg"></i>
-              </button>
-            </Tooltip>
-          </div>
+        <header className="flex flex-col sm:flex-row items-center gap-2 pb-2 border-b border-[rgba(var(--color-primary-rgb),0.2)] z-10">
+            {/* Left: Search Bar */}
+            <div className="relative w-full sm:w-auto flex-shrink-0">
+                <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                <input
+                type="text"
+                placeholder="Search transcript..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full sm:w-52 cosmo-input rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none"
+                />
+            </div>
+            
+            {/* Middle: Audio Player / Recording Controls */}
+            <div className="w-full sm:flex-1 flex justify-center px-2 min-w-0">
+                {isListening || audioBlobUrl ? (
+                    <AudioPlayer 
+                        isRecording={isListening}
+                        recordingDuration={recordingDuration}
+                        onStop={onStop}
+                        audioUrl={audioBlobUrl} 
+                        onDelete={onDeleteAudio} 
+                        isRecordingEnabled={isRecordingEnabled}
+                    />
+                ) : (
+                    <RecordingControls 
+                        onStart={onStart}
+                        isRecordingEnabled={isRecordingEnabled}
+                        onToggle={() => setIsRecordingEnabled(!isRecordingEnabled)}
+                    />
+                )}
+            </div>
+
+            {/* Right: Controls */}
+            <div className="flex w-full sm:w-auto items-center justify-center sm:justify-end gap-2 flex-shrink-0">
+                <Tooltip content={`Change to ${nextTextSizeLabel[transcriptTextSize]} text`}>
+                    <button onClick={cycleTextSize} className="h-10 px-3 rounded-lg flex items-center justify-center gap-2 transition-colors cosmo-button">
+                        <i className="fas fa-text-height"></i>
+                        <span className="text-xs font-semibold w-12 text-center">{textSizeLabels[transcriptTextSize]}</span>
+                    </button>
+                </Tooltip>
+                <Tooltip content={autoScroll ? "Auto-scroll On" : "Scroll to Bottom"}>
+                    <button 
+                    onClick={handleAutoScrollClick} 
+                    className={`h-10 w-10 flex-shrink-0 cosmo-button rounded-lg transition-all flex items-center justify-center ${autoScroll ? 'text-[var(--color-primary)]' : `text-slate-400 ${newContentSinceScroll ? 'animate-cosmic-glow' : ''}`}`}
+                    >
+                    <i className={`fas ${autoScroll ? 'fa-anchor' : 'fa-arrow-down'}`}></i>
+                    </button>
+                </Tooltip>
+                <Tooltip content="Chat with Transcript">
+                    <button onClick={onOpenChat} className="h-10 w-10 flex-shrink-0 cosmo-button rounded-lg transition-colors flex items-center justify-center">
+                    <i className="fas fa-comments text-lg"></i>
+                    </button>
+                </Tooltip>
+            </div>
         </header>
 
         <div className="z-10 relative transition-all duration-300 ease-in-out" ref={visualizerContainerRef} style={{ height: `${visualizerHeight}px` }}>
             <Visualizer isListening={isListening} stream={stream} themeColors={themeColors} height={visualizerHeight} />
         </div>
         
-        <Tooltip text="Double-click to toggle size" position="top">
+        <Tooltip content="Double-click to toggle size">
             <div className="visualizer-resizer-handle" onDoubleClick={handleVisualizerResizeToggle} />
         </Tooltip>
 

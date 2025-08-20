@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import useSpeechRecognition from './hooks/useSpeechRecognition';
@@ -116,6 +117,7 @@ const App: React.FC = () => {
     translationLanguage, setTranslationLanguage,
     spokenLanguage, setSpokenLanguage,
     liveTranslationEnabled, setLiveTranslationEnabled,
+    isRecordingEnabled, setIsRecordingEnabled,
     leftPanelWidth, rightPanelWidth, handleMouseDown, resetLayout,
     transcriptTextSize, setTranscriptTextSize,
     userApiKey, setUserApiKey,
@@ -181,16 +183,16 @@ const App: React.FC = () => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
-  const { isListening, transcript, finalTranscript, error, startListening, stopListening, clearTranscript, confidence, isCloudMode } = useSpeechRecognition({ 
+  const { isListening, transcript, finalTranscript, error, startListening, stopListening, clearTranscript, confidence, isCloudMode, stream, audioBlobUrl, deleteAudio, recordingDuration } = useSpeechRecognition({ 
     spokenLanguage,
     userApiKey,
     addToast,
+    isRecordingEnabled,
   });
   
   useEffect(() => { if (error) { addToast('System Info', error, 'info'); } }, [error, addToast]);
 
   const {
-    stream, setStream,
     transcriptEntries,
     activeSpeaker,
     speakerProfiles,
@@ -208,6 +210,7 @@ const App: React.FC = () => {
       translationLanguage,
       userApiKey,
       isCloudMode,
+      stream,
   });
 
   const {
@@ -240,35 +243,13 @@ const App: React.FC = () => {
     return () => clearTimeout(initialGlowTimeout);
   }, []);
 
-  // This effect decouples the visualizer's stream from the speech recognition startup
-  // to prevent microphone resource conflicts on mobile browsers.
-  useEffect(() => {
-    const getStreamForVisualizer = async () => {
-        if (isListening && !stream) {
-            try {
-                const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                setStream(mediaStream);
-                setSessionActive(true);
-                if (!isCloudMode) {
-                  addToast('Listening Started', 'DefScribe is now recording your speech.', 'info');
-                }
-            } catch (err) {
-                addToast('Microphone Error', 'Could not get audio stream for visualizer. Transcription may still work.', 'error');
-            }
-        }
-    };
-    
-    getStreamForVisualizer();
-  }, [isListening, stream, addToast, setSessionActive, setStream, isCloudMode]);
-
   const handleStart = () => {
     startListening();
+    setSessionActive(true);
   };
 
   const handleStop = async () => {
     stopListening();
-    stream?.getTracks().forEach(track => track.stop());
-    setStream(null);
     addToast('Listening Stopped', 'Recording has been paused.', 'info');
     if (fullTranscriptText.trim().length > 10) {
       generateAllAnalytics(fullTranscriptText, speakerProfiles);
@@ -277,16 +258,12 @@ const App: React.FC = () => {
 
   const clearSessionAction = useCallback(() => {
     stopListening();
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
     clearTranscript();
     clearTranscriptEntries();
     clearAnalytics();
     setSessionActive(false);
     setHighlightedTopic(null);
-  }, [stream, setStream, stopListening, clearTranscript, clearTranscriptEntries, clearAnalytics, setSessionActive]);
+  }, [stopListening, clearTranscript, clearTranscriptEntries, clearAnalytics]);
 
   const handleConfirmClear = () => {
       clearSessionAction();
@@ -296,18 +273,28 @@ const App: React.FC = () => {
 
   const handleClear = useCallback(() => {
     const fullTranscriptText = transcriptEntries.map(e => e.text).join('');
-    if (fullTranscriptText.trim().length === 0) {
+    if (fullTranscriptText.trim().length === 0 && !audioBlobUrl) {
       clearSessionAction();
       return;
     }
     setIsClearConfirmOpen(true);
-  }, [transcriptEntries, clearSessionAction]);
+  }, [transcriptEntries, clearSessionAction, audioBlobUrl]);
 
   const handleResetLayout = () => {
     resetLayout();
     setVisualizerHeight(getInitialVisualizerHeight());
   };
 
+
+  const shortcutsForTooltip = [
+    { key: ' ', description: 'Toggle recording' },
+    { key: 'i', ctrl: true, description: 'Toggle immersive mode' },
+    { key: 'c', ctrl: true, shift: true, description: 'Clear session' },
+    { key: '/', ctrl: true, description: 'Toggle chat' },
+    { key: 'f', description: 'Toggle fullscreen (Immersive)'},
+    { key: 'm', description: 'Toggle menu (Immersive)'},
+    { key: 'Escape', description: 'Close modals / Exit immersive' }
+  ];
 
   useKeyboardNavigation([
     { key: ' ', handler: () => isListening ? handleStop() : handleStart(), description: 'Toggle recording' },
@@ -390,7 +377,7 @@ const App: React.FC = () => {
               isSummarizing={isSummarizing}
               wpm={speechAnalytics.wpm || 0}
               confidence={confidence}
-              finalTranscript={finalTranscript}
+              finalTranscript={fullTranscriptText}
               onStart={handleStart}
               onStop={handleStop}
               onClear={handleClear}
@@ -411,12 +398,15 @@ const App: React.FC = () => {
               setSpokenLanguage={setSpokenLanguage}
               liveTranslationEnabled={liveTranslationEnabled}
               setLiveTranslationEnabled={setLiveTranslationEnabled}
+              isRecordingEnabled={isRecordingEnabled}
+              setIsRecordingEnabled={setIsRecordingEnabled}
               onResetLayout={handleResetLayout}
               onExport={() => setIsExportModalOpen(true)}
               sessionActive={sessionActive}
               userApiKey={userApiKey}
               onUserApiKeyConnect={handleUserApiKeyConnect}
               onUserApiKeyDisconnect={handleUserApiKeyDisconnect}
+              shortcuts={shortcutsForTooltip}
             />
           </div>
           <div
@@ -444,6 +434,13 @@ const App: React.FC = () => {
               visualizerHeight={visualizerHeight}
               setVisualizerHeight={setVisualizerHeight}
               highlightedTopic={highlightedTopic}
+              audioBlobUrl={audioBlobUrl}
+              onDeleteAudio={deleteAudio}
+              recordingDuration={recordingDuration}
+              onStop={handleStop}
+              onStart={handleStart}
+              isRecordingEnabled={isRecordingEnabled}
+              setIsRecordingEnabled={setIsRecordingEnabled}
             />
           </div>
           <div

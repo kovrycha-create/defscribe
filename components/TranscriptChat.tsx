@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { type ChatMessage } from '../types';
@@ -205,18 +206,18 @@ const TranscriptChat: React.FC<TranscriptChatProps> = ({ transcript, onClose, tr
         <header className="flex-shrink-0 flex items-center justify-between p-4 border-b border-[rgba(var(--color-primary-rgb),0.2)]">
           <h2 id="chat-title" className="text-lg font-bold flex items-center gap-2"><i className="fas fa-comments text-[var(--color-primary)]"></i> Chat with Transcript</h2>
           <div className="flex items-center gap-2">
-            <Tooltip text="Clear Chat" position="bottom">
+            <Tooltip content="Clear Chat">
               <button aria-label="Clear chat history" onClick={handleClearChat} className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors cosmo-button"><i className="fas fa-trash-alt"></i></button>
             </Tooltip>
 
-            <Tooltip text={`Change to ${nextTextSizeLabel[textSize]} text`} position="bottom">
+            <Tooltip content={`Change to ${nextTextSizeLabel[textSize]} text`}>
                 <button aria-label={`Change text size to ${nextTextSizeLabel[textSize]}`} onClick={cycleTextSize} className="h-8 px-3 rounded-lg flex items-center justify-center gap-2 transition-colors cosmo-button">
                     <i className="fas fa-text-height"></i>
                     <span className="text-xs font-semibold w-12 text-center">{textSizeLabels[textSize]}</span>
                 </button>
             </Tooltip>
 
-            <Tooltip text={autoScroll ? "Auto-scroll On" : "Scroll to Bottom"} position="bottom">
+            <Tooltip content={autoScroll ? "Auto-scroll On" : "Scroll to Bottom"}>
               <button aria-label={autoScroll ? "Disable auto-scroll" : "Scroll to bottom"} onClick={handleAutoScrollClick} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 cosmo-button ${autoScroll ? 'text-[var(--color-primary)]' : `text-slate-400 ${newContent ? 'animate-cosmic-glow' : ''}`}`}>
                 <i className={`fas ${autoScroll ? 'fa-anchor' : 'fa-arrow-down'}`}></i>
               </button>
@@ -243,12 +244,12 @@ const TranscriptChat: React.FC<TranscriptChatProps> = ({ transcript, onClose, tr
                   </div>
                    {msg.role === 'model' && !msg.isLoading && msg.text && (
                        <div className="absolute top-0 left-12 z-20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-slate-800/90 backdrop-blur-sm rounded-full border border-slate-600 p-1 shadow-lg">
-                           <Tooltip text="Translate" position='top'>
+                           <Tooltip content="Translate">
                                 <button onClick={() => handleTranslate(msg.id, msg.text)} disabled={!!isTranslatingId} className="w-7 h-7 bg-slate-600 rounded-full flex items-center justify-center text-slate-300 hover:bg-slate-500 disabled:opacity-50 disabled:cursor-wait" aria-label="Translate message">
                                     {isTranslatingId === msg.id ? <i className="fas fa-spinner fa-spin text-xs"></i> : <i className="fas fa-language text-xs"></i>}
                                 </button>
                            </Tooltip>
-                           <Tooltip text={copiedMessageId === msg.id ? "Copied!" : "Copy"} position='top'>
+                           <Tooltip content={copiedMessageId === msg.id ? "Copied!" : "Copy"}>
                                 <button onClick={() => handleCopy(msg.text, msg.id)} className="w-7 h-7 bg-slate-600 rounded-full flex items-center justify-center text-slate-300 hover:bg-slate-500" aria-label="Copy message">
                                     <i className={`fas ${copiedMessageId === msg.id ? 'fa-check text-green-400' : 'fa-copy'} text-xs`}></i>
                                 </button>

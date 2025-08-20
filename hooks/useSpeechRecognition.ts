@@ -1,3 +1,4 @@
+
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { type ToastType } from '../components/Toast';
 import { transcribeAudio } from '../services/geminiService';
@@ -51,6 +52,7 @@ interface SpeechRecognitionHookProps {
   spokenLanguage: string;
   userApiKey: string | null;
   addToast: (title: string, message: string, type: ToastType) => void;
+  isRecordingEnabled: boolean;
 }
 
 interface SpeechRecognitionHook {
@@ -63,6 +65,10 @@ interface SpeechRecognitionHook {
   startListening: () => void;
   stopListening: () => void;
   clearTranscript: () => void;
+  stream: MediaStream | null;
+  audioBlobUrl: string | null;
+  deleteAudio: () => void;
+  recordingDuration: number;
 }
 
 const blobToBase64 = (blob: Blob): Promise<string> => {
@@ -80,18 +86,22 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
   });
 };
 
-const useSpeechRecognition = ({ spokenLanguage, userApiKey, addToast }: SpeechRecognitionHookProps): SpeechRecognitionHook => {
+const useSpeechRecognition = ({ spokenLanguage, userApiKey, addToast, isRecordingEnabled }: SpeechRecognitionHookProps): SpeechRecognitionHook => {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [finalTranscript, setFinalTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [averageConfidence, setAverageConfidence] = useState(0);
   const [isCloudMode, setIsCloudMode] = useState(false);
+  
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const streamRef = useRef<MediaStream | null>(null);
+  const recordingTimerRef = useRef<number | null>(null);
   
   const confidenceScoresRef = useRef<number[]>([]);
   const listeningIntentRef = useRef(false);
@@ -99,94 +109,98 @@ const useSpeechRecognition = ({ spokenLanguage, userApiKey, addToast }: SpeechRe
   const prevSpokenLanguage = usePrevious(spokenLanguage);
   
   const startListeningCallbackRef = useRef<() => void>(() => {});
-  
-  const startCloudListening = useCallback(async () => {
-      if (!userApiKey) {
-          setError("An API key is required for cloud transcription.");
-          addToast("API Key Required", "Please add a Gemini API key in settings to use transcription on this browser.", "error");
-          return;
-      }
-      try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          streamRef.current = stream;
-          
-          const options = { mimeType: 'audio/webm' };
-          if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-              console.warn(`${options.mimeType} is not supported, falling back to default.`);
-              // @ts-ignore
-              options.mimeType = '';
-          }
 
-          const mediaRecorder = new MediaRecorder(stream, options);
-          mediaRecorderRef.current = mediaRecorder;
-          audioChunksRef.current = [];
-          
-          mediaRecorder.ondataavailable = event => {
-              if (event.data.size > 0) audioChunksRef.current.push(event.data);
-          };
-          
-          mediaRecorder.onstop = async () => {
-              addToast('Processing Audio', 'Sending audio for cloud transcription...', 'processing');
-              const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
-              const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-              
-              if (audioBlob.size === 0) {
-                addToast('Empty Recording', 'No audio was recorded to transcribe.', 'warning');
-                return;
-              }
-
-              const base64Audio = await blobToBase64(audioBlob);
-              const result = await transcribeAudio(base64Audio, mimeType, userApiKey);
-
-              if (result.startsWith('Error:')) {
-                  addToast('Transcription Failed', result, 'error');
-              } else {
-                  addToast('Transcription Complete', 'Received transcript from cloud.', 'success');
-                  setFinalTranscript(prev => prev + result + ' ');
-              }
-              // Clean up stream
-              streamRef.current?.getTracks().forEach(track => track.stop());
-              streamRef.current = null;
-          };
-          
-          mediaRecorder.start(1000); // Timeslice to get data periodically
-          setTranscript('');
-          setError(null);
-          setIsListening(true);
-          listeningIntentRef.current = true;
-
-      } catch (err) {
-          console.error("Cloud listening failed to start:", err);
-          setError("Microphone access was denied or no microphone was found.");
-          addToast("Microphone Error", "Could not access microphone for recording.", "error");
-      }
-  }, [userApiKey, addToast]);
-
-
-  const startListening = useCallback(() => {
-    if (isCloudMode) {
-      startCloudListening();
-      return;
+  const deleteAudio = useCallback(() => {
+    if (audioBlobUrl) {
+      URL.revokeObjectURL(audioBlobUrl);
     }
-    if (!recognitionRef.current) return;
+    setAudioBlobUrl(null);
+    audioChunksRef.current = [];
+  }, [audioBlobUrl]);
+  
+  const startListening = useCallback(async () => {
+    if (isListening) return;
+
+    deleteAudio();
 
     try {
-      setTranscript('');
-      setError(null);
-      listeningIntentRef.current = true;
-      recognitionRef.current.lang = spokenLanguage;
-      recognitionRef.current.start();
-      setIsListening(true);
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'InvalidStateError') {
-        console.warn("SpeechRecognition.start() called while already started. Ignoring.");
-      } else {
-        console.error("Could not start recognition", e);
-        listeningIntentRef.current = false;
+        const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setStream(mediaStream);
+
+        if (isRecordingEnabled) {
+            const options = { mimeType: 'audio/webm' };
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                console.warn(`${options.mimeType} is not supported, falling back to default.`);
+                // @ts-ignore
+                options.mimeType = '';
+            }
+
+            const mediaRecorder = new MediaRecorder(mediaStream, options);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = event => {
+                if (event.data.size > 0) audioChunksRef.current.push(event.data);
+            };
+
+            mediaRecorder.onstop = async () => {
+                const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+                const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+
+                if (audioBlob.size > 0) {
+                  const url = URL.createObjectURL(audioBlob);
+                  setAudioBlobUrl(url);
+                }
+
+                if (isCloudMode) {
+                    if (audioBlob.size === 0) {
+                        addToast('Empty Recording', 'No audio was recorded to transcribe.', 'warning');
+                        return;
+                    }
+                    addToast('Processing Audio', 'Sending audio for cloud transcription...', 'processing');
+                    const base64Audio = await blobToBase64(audioBlob);
+                    const result = await transcribeAudio(base64Audio, mimeType, userApiKey);
+
+                    if (result.startsWith('Error:')) {
+                        addToast('Transcription Failed', result, 'error');
+                    } else {
+                        addToast('Transcription Complete', 'Received transcript from cloud.', 'success');
+                        setFinalTranscript(prev => prev + result + ' ');
+                    }
+                }
+            };
+
+            mediaRecorder.start(1000);
+            setRecordingDuration(0);
+            const recordingStartTime = Date.now();
+            if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+            recordingTimerRef.current = window.setInterval(() => {
+                setRecordingDuration(Math.floor((Date.now() - recordingStartTime) / 1000));
+            }, 1000);
+            addToast('Listening Started', 'DefScribe is now recording your speech.', 'info');
+        } else {
+            addToast('Listening Started', 'Transcription active. Audio is not being recorded.', 'info');
+        }
+
+
+        setTranscript('');
+        setError(null);
+        setIsListening(true);
+        listeningIntentRef.current = true;
+
+        if (!isCloudMode && recognitionRef.current) {
+            recognitionRef.current.lang = spokenLanguage;
+            recognitionRef.current.start();
+        }
+
+    } catch (err) {
+        console.error("Failed to start listening:", err);
+        setError("Microphone access was denied or no microphone was found.");
+        addToast("Microphone Error", "Could not access microphone for recording.", "error");
         setIsListening(false);
-      }
+        listeningIntentRef.current = false;
     }
-  }, [spokenLanguage, isCloudMode, startCloudListening]);
+  }, [isListening, deleteAudio, addToast, isCloudMode, spokenLanguage, userApiKey, isRecordingEnabled]);
   
   useEffect(() => {
     startListeningCallbackRef.current = startListening;
@@ -235,13 +249,14 @@ const useSpeechRecognition = ({ spokenLanguage, userApiKey, addToast }: SpeechRe
     };
 
     recognition.onend = () => {
-      setIsListening(false);
+      // setIsListening(false); // This is now handled by stopListening
       if (languageChangedWhileListening.current) {
         languageChangedWhileListening.current = false;
         setTimeout(() => {
           if (listeningIntentRef.current) startListeningCallbackRef.current();
         }, 100);
-      } else if (listeningIntentRef.current) {
+      } else if (listeningIntentRef.current && !isCloudMode) {
+        // Only restart for local mode if intent is still there
         startListeningCallbackRef.current();
       }
     };
@@ -262,7 +277,7 @@ const useSpeechRecognition = ({ spokenLanguage, userApiKey, addToast }: SpeechRe
         recognitionRef.current = null;
       }
     };
-  }, []);
+  }, [isCloudMode]);
 
   useEffect(() => {
     if (isCloudMode || !recognitionRef.current) return;
@@ -275,17 +290,26 @@ const useSpeechRecognition = ({ spokenLanguage, userApiKey, addToast }: SpeechRe
 
   const stopListening = () => {
     listeningIntentRef.current = false;
-    if (isCloudMode) {
-      if (mediaRecorderRef.current?.state === 'recording') {
-        mediaRecorderRef.current.stop();
-      }
-      setIsListening(false);
-      return;
+    
+    if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
     }
 
-    if (!recognitionRef.current) return;
-    languageChangedWhileListening.current = false;
-    recognitionRef.current.stop();
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+    
+    if (!isCloudMode && recognitionRef.current) {
+      languageChangedWhileListening.current = false;
+      recognitionRef.current.stop();
+    }
+    setIsListening(false);
   };
   
   const clearTranscript = useCallback(() => {
@@ -293,10 +317,15 @@ const useSpeechRecognition = ({ spokenLanguage, userApiKey, addToast }: SpeechRe
       setFinalTranscript('');
       confidenceScoresRef.current = [];
       setAverageConfidence(0);
-      audioChunksRef.current = [];
-  }, []);
+      deleteAudio();
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      setRecordingDuration(0);
+  }, [deleteAudio]);
 
-  return { isListening, transcript, finalTranscript, error, startListening, stopListening, clearTranscript, confidence: averageConfidence, isCloudMode };
+  return { isListening, transcript, finalTranscript, error, startListening, stopListening, clearTranscript, confidence: averageConfidence, isCloudMode, stream, audioBlobUrl, deleteAudio, recordingDuration };
 };
 
 export default useSpeechRecognition;
