@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { type TranscriptEntry, type SpeakerProfile, type SpeakerId } from '../types';
 import Tooltip from './Tooltip';
@@ -120,12 +119,13 @@ interface TranscriptDisplayProps {
   onTranslateEntry: (entryId: string) => void;
   onReassignSpeaker: (entryId: string, newSpeakerId: SpeakerId) => void;
   transcriptTextSize: 'sm' | 'base' | 'lg' | 'xl';
+  isTrueMobile: boolean;
 }
 
 const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
   entries, isListening, liveText, liveTextState, activeSpeaker, speakerProfiles,
   showTimestamps, diarizationEnabled, onSpeakerTagClick, searchQuery, highlightedTopic,
-  containerRef, endRef, onTranslateEntry, onReassignSpeaker, transcriptTextSize
+  containerRef, endRef, onTranslateEntry, onReassignSpeaker, transcriptTextSize, isTrueMobile
 }) => {
 
   const [activeMenuEntryId, setActiveMenuEntryId] = useState<string | null>(null);
@@ -240,8 +240,16 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
       ))}
       
       {entries.length === 0 && !isListening && (
-        <div className="flex items-start gap-3 p-2">
-          <p className="flex-1 text-slate-400 italic">Welcome to DefScribe. Press Start Listening to begin.</p>
+        <div className="relative overflow-hidden p-2 text-center">
+          <p className={`animate-marquee text-slate-400 italic ${textSizeClasses[transcriptTextSize]}`}>
+            Welcome to DefScribe. Press <span className="text-green-400 font-semibold">Start Listening</span> to begin.
+          </p>
+          {isTrueMobile && (
+            <div className="text-slate-400 mt-4 px-2">
+                <p className="text-xl font-bold text-amber-300">Mobile devices do not support live transcription.</p>
+                <p className="text-sm mt-1">Your transcript will appear here after you press "Stop Listening".</p>
+            </div>
+          )}
         </div>
       )}
       

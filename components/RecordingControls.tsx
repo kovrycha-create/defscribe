@@ -15,7 +15,7 @@ const RecordingControls: React.FC<RecordingControlsProps> = ({ onStart, isRecord
         onClick={onStart}
         className="cosmo-button h-10 px-6 font-semibold flex items-center gap-2"
       >
-        <i className="fas fa-microphone"></i>
+        <i className="fas fa-play"></i>
         <span>Start Recording</span>
       </button>
       <Tooltip content={isRecordingEnabled ? "Disable Audio Recording" : "Enable Audio Recording"}>

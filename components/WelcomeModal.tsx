@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface WelcomeModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onStartTour: () => void;
+  isTrueMobile: boolean;
 }
 
 const FeatureCard: React.FC<{ icon: string; title: string; children: React.ReactNode }> = ({ icon, title, children }) => (
@@ -18,9 +20,18 @@ const FeatureCard: React.FC<{ icon: string; title: string; children: React.React
   </div>
 );
 
-const WelcomeModal: React.FC<WelcomeModalProps> = ({ isOpen, onClose }) => {
+const WelcomeModal: React.FC<WelcomeModalProps> = ({ isOpen, onClose, onStartTour, isTrueMobile }) => {
   const modalRef = React.useRef<HTMLDivElement>(null);
   useFocusTrap(modalRef, isOpen);
+  
+  const [countdown, setCountdown] = useState(5);
+
+  useEffect(() => {
+    if (isOpen && countdown > 0) {
+      const timer = setTimeout(() => setCountdown(prev => prev - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, countdown]);
 
   if (!isOpen) return null;
 
@@ -34,28 +45,44 @@ const WelcomeModal: React.FC<WelcomeModalProps> = ({ isOpen, onClose }) => {
         aria-labelledby="welcome-title"
       >
         <div className="text-center">
-          <h2 id="welcome-title" className="text-2xl font-bold mb-2">Welcome to DefScribe AI!</h2>
-          <p className="text-slate-300 mb-6">Your advanced dictation and transcription assistant.</p>
+          <h2 id="welcome-title" className="text-2xl font-bold mb-2">Unlock the Power of Your Voice</h2>
+          {isTrueMobile ? (
+            <p className="text-slate-300 mb-6">DefScribe AI: Record, transcribe, and analyze your speech instantly. Tap Start Listening to begin.</p>
+          ) : (
+            <p className="text-slate-300 mb-6">Welcome to DefScribe AI, your personal assistant for capturing every word and idea.</p>
+          )}
         </div>
 
-        <div className="space-y-4 mb-8">
-          <FeatureCard icon="fa-microphone-alt" title="Real-Time Transcription">
-            Simply press "Start Listening" and see your speech transcribed instantly with high accuracy.
-          </FeatureCard>
-          <FeatureCard icon="fa-brain" title="AI-Powered Analytics">
-            After recording, get AI-generated summaries, action items, key topics, and detailed speech statistics.
-          </FeatureCard>
-          <FeatureCard icon="fa-globe" title="Multilingual Transcription">
-            Use the "Spoken Language" setting to transcribe in multiple languages, with auto-detection and live translation capabilities.
-          </FeatureCard>
-        </div>
+        {!isTrueMobile && (
+          <div className="space-y-4 mb-8">
+            <FeatureCard icon="fa-microphone-alt" title="Flawless Real-Time Transcription">
+              Capture your thoughts, meetings, and notes with lightning-fast, highly accurate voice-to-text. Just press 'Start Listening' and let the magic happen.
+            </FeatureCard>
+            <FeatureCard icon="fa-brain" title="Powerful AI Insights">
+              Go beyond simple transcription. DefScribe analyzes your conversations to generate concise summaries, extract actionable tasks, identify key topics, and provide detailed speech analytics.
+            </FeatureCard>
+            <FeatureCard icon="fa-globe" title="Global Language Support">
+              Choose from a wide range of supported languages in the Settings panel for accurate transcription. Live translation features are also available to bridge communication gaps.
+            </FeatureCard>
+          </div>
+        )}
 
-        <div className="text-center">
+        <div className="text-center space-y-3">
+          {!isTrueMobile && (
+            <button
+              onClick={onStartTour}
+              className="w-full px-6 py-2 rounded-lg bg-[var(--color-accent)] text-black font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+            >
+              <i className="fas fa-route"></i>
+              Start Guided Tour
+            </button>
+          )}
           <button
             onClick={onClose}
-            className="px-6 py-2 rounded-lg bg-[var(--color-primary)] text-black font-semibold hover:opacity-90 transition-opacity"
+            disabled={countdown > 0}
+            className="w-full px-6 py-2 rounded-lg bg-[var(--color-primary)] text-black font-semibold transition-all duration-300 disabled:bg-slate-600 disabled:text-slate-400 disabled:cursor-not-allowed enabled:hover:opacity-90"
           >
-            Get Started
+            {countdown > 0 ? `Let's Get Started (${countdown})` : "Let's Get Started"}
           </button>
         </div>
       </div>

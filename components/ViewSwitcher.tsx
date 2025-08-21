@@ -1,18 +1,18 @@
 
+
 import React from 'react';
 import Tooltip from './Tooltip';
 
 interface ViewSwitcherProps {
-  viewModeOverride: 'desktop' | 'mobile' | null;
+  isMobileView: boolean;
   setViewModeOverride: (mode: 'desktop' | 'mobile' | null) => void;
 }
 
-const ViewSwitcher: React.FC<ViewSwitcherProps> = ({ viewModeOverride, setViewModeOverride }) => {
-  const isMobileView = viewModeOverride === 'mobile';
+const ViewSwitcher: React.FC<ViewSwitcherProps> = ({ isMobileView, setViewModeOverride }) => {
 
   const handleClick = () => {
     if (isMobileView) {
-      setViewModeOverride(null);
+      setViewModeOverride('desktop');
     } else {
       setViewModeOverride('mobile');
     }

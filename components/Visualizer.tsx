@@ -1,4 +1,5 @@
 
+
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { AudioContextManager } from '../utils/AudioContextManager';
 import { AUDIO_CONSTANTS } from '../constants/audio';
@@ -63,6 +64,7 @@ const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColor
   
   // Customization state
   const [activeStyles, setActiveStyles] = useState<VisualizerActiveStyles>({ wave: true, bars: false, nexus: true, classic: false });
+  const [styleOrder, setStyleOrder] = useState<VisualizerStyle[]>(['wave', 'nexus']);
   const [sensitivity, setSensitivity] = useState(1.0);
   const [showControls, setShowControls] = useState(false);
   
@@ -77,7 +79,17 @@ const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColor
   const isSmall = height < SMALL_VISUALIZER_HEIGHT_THRESHOLD;
 
   const handleStyleToggle = (style: VisualizerStyle) => {
-    setActiveStyles(prev => ({ ...prev, [style]: !prev[style] }));
+    setActiveStyles(prev => {
+      const isActivating = !prev[style];
+      if (isActivating) {
+        // Add to the end of the render order (on top)
+        setStyleOrder(currentOrder => [...currentOrder, style]);
+      } else {
+        // Remove from render order
+        setStyleOrder(currentOrder => currentOrder.filter(s => s !== style));
+      }
+      return { ...prev, [style]: isActivating };
+    });
   };
 
   useEffect(() => {
@@ -171,13 +183,17 @@ const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColor
   }, [themeColors]);
 
   const draw = useCallback(() => {
-    if (!analyser.current || !dataArray.current || !frequencyArray.current || !canvasRef.current) return;
-    
     const currentAnalyser = analyser.current;
-    currentAnalyser.getByteTimeDomainData(dataArray.current as any);
-    currentAnalyser.getByteFrequencyData(frequencyArray.current as any);
-
+    const currentDataArray = dataArray.current;
+    const currentFrequencyArray = frequencyArray.current;
     const canvas = canvasRef.current;
+    
+    if (!currentAnalyser || !currentDataArray || !currentFrequencyArray || !canvas) return;
+    
+  // Cast to the ArrayBuffer-backed form requested by some DOM lib overloads.
+  currentAnalyser.getByteTimeDomainData(currentDataArray as unknown as Uint8Array<ArrayBuffer>);
+  currentAnalyser.getByteFrequencyData(currentFrequencyArray as unknown as Uint8Array<ArrayBuffer>);
+
     const ctx = canvas.getContext('2d');
     const W = canvas.offsetWidth;
     const H = canvas.offsetHeight;
@@ -185,16 +201,29 @@ const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColor
     
     ctx.clearRect(0, 0, W, H);
     
-    if (activeStyles.nexus) drawNexus(ctx, W, H, frequencyArray.current, themeColors, sensitivity, nexusParticles.current, nexusTendrils.current);
-    if (activeStyles.bars) drawMirroredBars(ctx, W, H, frequencyArray.current, themeColors, sensitivity, barPeaks.current);
-    if (activeStyles.classic) drawClassicBars(ctx, W, H, frequencyArray.current, themeColors, sensitivity, classicBarPeaks.current);
-    if (activeStyles.wave) drawWave(ctx, W, H, dataArray.current, themeColors, sensitivity);
+    styleOrder.forEach(style => {
+        if (!activeStyles[style]) return;
+        switch (style) {
+            case 'wave':
+                drawWave(ctx, W, H, currentDataArray, themeColors, sensitivity);
+                break;
+            case 'bars':
+                drawMirroredBars(ctx, W, H, currentFrequencyArray, themeColors, sensitivity, barPeaks.current);
+                break;
+            case 'nexus':
+                drawNexus(ctx, W, H, currentFrequencyArray, themeColors, sensitivity, nexusParticles.current, nexusTendrils.current);
+                break;
+            case 'classic':
+                drawClassicBars(ctx, W, H, currentFrequencyArray, themeColors, sensitivity, classicBarPeaks.current);
+                break;
+        }
+    });
 
-    drawBass(ctx, W, H, frequencyArray.current, themeColors, bassPulses.current);
-    drawParticles(ctx, W, H, frequencyArray.current, themeColors, particles.current);
+    drawBass(ctx, W, H, currentFrequencyArray, themeColors, bassPulses.current);
+    drawParticles(ctx, W, H, currentFrequencyArray, themeColors, particles.current);
     
     animationFrameId.current = requestAnimationFrame(draw);
-  }, [activeStyles, sensitivity, themeColors]);
+  }, [activeStyles, sensitivity, themeColors, styleOrder]);
 
   useEffect(() => {
     let contextAcquired = false;
@@ -207,10 +236,10 @@ const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColor
         sourceNodeRef.current = source;
         source.connect(analyser.current);
         
-        analyser.current.fftSize = AUDIO_CONSTANTS.FFT_SIZE;
-        analyser.current.smoothingTimeConstant = AUDIO_CONSTANTS.SMOOTHING_TIME_CONSTANT;
-        dataArray.current = new Uint8Array(analyser.current.fftSize);
-        frequencyArray.current = new Uint8Array(analyser.current.frequencyBinCount);
+  analyser.current.fftSize = AUDIO_CONSTANTS.FFT_SIZE;
+  analyser.current.smoothingTimeConstant = AUDIO_CONSTANTS.SMOOTHING_TIME_CONSTANT;
+  dataArray.current = new Uint8Array(analyser.current.fftSize);
+  frequencyArray.current = new Uint8Array(analyser.current.frequencyBinCount);
         
         barPeaks.current = [];
         classicBarPeaks.current = [];

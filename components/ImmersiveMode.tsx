@@ -16,6 +16,7 @@ interface ImmersiveModeProps {
   onToggleListen: () => void;
   avatarEmotion: Emotion;
   avatarMap: Record<Emotion, string>;
+  isTrueMobile: boolean;
 }
 
 type VisualizerType = 'waveform' | 'bars';
@@ -434,7 +435,7 @@ const getTransitionClasses = (from: Emotion, to: Emotion): { out: string, in: st
     return transition;
 };
 
-const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEntries, interimTranscript, stream, themeColors, onExit, onToggleListen, avatarEmotion, avatarMap }) => {
+const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEntries, interimTranscript, stream, themeColors, onExit, onToggleListen, avatarEmotion, avatarMap, isTrueMobile }) => {
   const [isFullscreen, setIsFullscreen] = useState(!!(document.fullscreenElement || (document as any).webkitFullscreenElement));
   
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -684,39 +685,41 @@ const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEn
         </div>
       )}
 
-      <div className="absolute inset-0 flex flex-col items-center justify-end pointer-events-none z-50 pb-24 sm:pb-48">
-        <div className="w-full max-w-4xl text-center space-y-2 p-2 sm:p-4">
-          <div className="h-48 text-lg sm:text-2xl text-slate-400 relative overflow-hidden">
-             {finalEntriesToShow.map((entry, index) => {
-                const isTheLatestEntry = entry.id === lastAddedEntryId;
-                const shouldHideTemporarily = isTheLatestEntry && liveTextState === 'holding';
-                
-                let animationClass = '';
-                if (isTheLatestEntry) {
-                    animationClass = shouldHideTemporarily ? 'opacity-0' : 'animate-[slide-fade-in_0.6s_ease-out]';
-                }
+      {!isTrueMobile && (
+        <div className="absolute inset-0 flex flex-col items-center justify-end pointer-events-none z-50 pb-24 sm:pb-48">
+          <div className="w-full max-w-4xl text-center space-y-2 p-2 sm:p-4">
+            <div className="h-48 text-lg sm:text-2xl text-slate-400 relative overflow-hidden">
+              {finalEntriesToShow.map((entry, index) => {
+                  const isTheLatestEntry = entry.id === lastAddedEntryId;
+                  const shouldHideTemporarily = isTheLatestEntry && liveTextState === 'holding';
+                  
+                  let animationClass = '';
+                  if (isTheLatestEntry) {
+                      animationClass = shouldHideTemporarily ? 'opacity-0' : 'animate-[slide-fade-in_0.6s_ease-out]';
+                  }
 
-                const bottomRem = (finalEntriesToShow.length - 1 - index) * itemTotalHeightRem;
+                  const bottomRem = (finalEntriesToShow.length - 1 - index) * itemTotalHeightRem;
 
-                return (
-                    <p
-                        key={entry.id}
-                        className={`transition-all duration-500 ease-out absolute left-0 right-0 ${animationClass}`}
-                        style={{ bottom: `${bottomRem}rem` }}
-                    >
-                        {entry.text}
-                    </p>
-                );
-             })}
-          </div>
-          <div className="min-h-[4rem] text-2xl sm:text-4xl font-semibold text-slate-100 p-2 sm:p-4 bg-black/20 backdrop-blur-sm rounded-xl border border-slate-700/50 shadow-lg">
-            <p className={liveTextClassName}>
-              {liveText || placeholderText}
-              {isListening && liveTextState === 'visible' && <span className="inline-block w-1 h-8 sm:h-10 bg-[var(--color-accent)] ml-1 animate-[cursor-blink_1s_step-end_infinite]"></span>}
-            </p>
+                  return (
+                      <p
+                          key={entry.id}
+                          className={`transition-all duration-500 ease-out absolute left-0 right-0 ${animationClass}`}
+                          style={{ bottom: `${bottomRem}rem` }}
+                      >
+                          {entry.text}
+                      </p>
+                  );
+              })}
+            </div>
+            <div className="min-h-[4rem] text-2xl sm:text-4xl font-semibold text-slate-100 p-2 sm:p-4 bg-black/20 backdrop-blur-sm rounded-xl border border-slate-700/50 shadow-lg">
+              <p className={liveTextClassName}>
+                {liveText || placeholderText}
+                {isListening && liveTextState === 'visible' && <span className="inline-block w-1 h-8 sm:h-10 bg-[var(--color-accent)] ml-1 animate-[cursor-blink_1s_step-end_infinite]"></span>}
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="absolute bottom-0 left-0 right-0 h-48 z-20 pointer-events-none">
         <EnhancedVisualizer analyser={analyser} themeColors={themeColors} type={visualizerType} />

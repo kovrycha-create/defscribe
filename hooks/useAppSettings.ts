@@ -1,6 +1,7 @@
 
 
 
+
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { THEME_PRESETS } from '../constants';
 import { type DiarizationSettings, type StatCardKey } from '../types';
@@ -105,7 +106,7 @@ const useAppSettings = () => {
     };
 
     const themeColors = useMemo(() => {
-        if (themeId === 5) { // 5 is now the custom theme ID
+        if (themeId === 8) { // 8 is now the custom theme ID
             return customThemeColors;
         }
         return THEME_PRESETS[themeId];
@@ -130,7 +131,7 @@ const useAppSettings = () => {
         } catch {}
     };
 
-    const { leftPanelWidth, rightPanelWidth, handleMouseDown, resetLayout } = useResizablePanels(320, 400, 280, 500);
+    const { leftPanelWidth, rightPanelWidth, handleMouseDown } = useResizablePanels(240, 440, 180, 600);
 
     const setSpokenLanguage = useCallback((lang: string) => {
         _setSpokenLanguage(lang);
@@ -207,7 +208,6 @@ const useAppSettings = () => {
         leftPanelWidth,
         rightPanelWidth,
         handleMouseDown,
-        resetLayout,
         transcriptTextSize, 
         setTranscriptTextSize,
         statCardOrder,

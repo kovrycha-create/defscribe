@@ -1,450 +1,426 @@
 
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import useSpeechRecognition from './hooks/useSpeechRecognition';
-import useAppSettings from './hooks/useAppSettings';
-import useTranscript from './hooks/useTranscript';
-import useAnalytics from './hooks/useAnalytics';
-import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
-import { useFocusTrap } from './hooks/useFocusTrap';
-import { useMediaQuery } from './hooks/useMediaQuery';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 
+// --- Components ---
 import ControlPanel from './components/panels/ControlPanel';
 import MainContentPanel from './components/panels/MainContentPanel';
 import AnalyticsPanel from './components/panels/AnalyticsPanel';
-import WelcomeModal from './components/WelcomeModal';
-
-import Toast, { type ToastMessage, type ToastType } from './components/Toast';
-import ImmersiveMode from './components/ImmersiveMode';
-import TranscriptChat from './components/TranscriptChat';
-import ExportModal from './components/ExportModal';
-import { AVATAR_EMOTIONS } from './constants';
-import CosmicBackground from './components/CosmicBackground';
 import BottomNav from './components/BottomNav';
-import ViewSwitcher from './components/ViewSwitcher';
+import ImmersiveMode from './components/ImmersiveMode';
+import WelcomeModal from './components/WelcomeModal';
+import ExportModal from './components/ExportModal';
+import TranscriptChat from './components/TranscriptChat';
+import Toast, { type ToastMessage, type ToastType } from './components/Toast';
+import CosmicBackground from './components/CosmicBackground';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import TourGuide from './components/TourGuide';
 
-const MAX_TOASTS = 5;
-const LARGE_VISUALIZER_HEIGHT = 280;
-const SMALL_VISUALIZER_HEIGHT = 120;
+// --- Hooks ---
+import useAppSettings from './hooks/useAppSettings';
+import useSpeechRecognition from './hooks/useSpeechRecognition';
+import useTranscript from './hooks/useTranscript';
+import useAnalytics from './hooks/useAnalytics';
+import { useMediaQuery } from './hooks/useMediaQuery';
+import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
+import { useTour } from './hooks/useTour';
 
-const getInitialVisualizerHeight = () => {
-  // Default to smaller visualizer on mobile
-  return window.innerWidth < 768 ? SMALL_VISUALIZER_HEIGHT : LARGE_VISUALIZER_HEIGHT;
-};
+// --- Types & Constants ---
+import { type SummaryStyle } from './types';
+import { AVATAR_EMOTIONS } from './constants';
+import * as SAMPLE_DATA from './sample-data';
 
-type MobileTab = 'controls' | 'transcript' | 'analytics';
-
-
-interface ConfirmationModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  title: string;
-  message: string;
-  confirmText?: string;
-  cancelText?: string;
-  confirmButtonClass?: string;
-}
-
-const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
-  isOpen,
-  onClose,
-  onConfirm,
-  title,
-  message,
-  confirmText = 'Confirm',
-  cancelText = 'Cancel',
-  confirmButtonClass = 'bg-red-600 text-white hover:bg-red-700',
-}) => {
-  const modalRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(modalRef, isOpen);
-
-  if (!isOpen) return null;
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-out]"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="confirmation-title"
-    >
-      <div
-        ref={modalRef}
-        className="cosmo-panel rounded-xl shadow-2xl p-6 w-full max-w-md"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="text-center">
-            <div className="w-12 h-12 rounded-full bg-red-600/20 text-red-500 flex items-center justify-center mx-auto mb-4 text-2xl">
-                <i className="fas fa-exclamation-triangle"></i>
-            </div>
-            <h2 id="confirmation-title" className="text-xl font-bold mb-2">{title}</h2>
-            <p className="text-slate-300 mb-6">{message}</p>
-        </div>
-        <div className="flex justify-center gap-4">
-          <button onClick={onClose} className="px-6 py-2 rounded-lg cosmo-button font-semibold">
-            {cancelText}
-          </button>
-          <button
-            onClick={onConfirm}
-            className={`px-6 py-2 rounded-lg font-semibold transition-colors ${confirmButtonClass}`}
-          >
-            {confirmText}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+const usePrevious = <T,>(value: T): T | undefined => {
+  const ref = useRef<T | undefined>(undefined);
+  useEffect(() => { ref.current = value; });
+  return ref.current;
 };
 
 
 const App: React.FC = () => {
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [isWelcomeModalOpen, setIsWelcomeModalOpen] = useState(false);
-  const [sessionActive, setSessionActive] = useState(false);
-  const [isStartButtonGlowing, setIsStartButtonGlowing] = useState(false);
-  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
-  const [visualizerHeight, setVisualizerHeight] = useState(getInitialVisualizerHeight);
-  const [highlightedTopic, setHighlightedTopic] = useState<string | null>(null);
+  // --- Primary Hooks ---
+  const appSettings = useAppSettings();
   
-  const {
-    themeId, themeColors, setThemeId,
-    customThemeColors, setCustomThemeColors,
-    diarizationSettings, setDiarizationSettings,
-    showTimestamps, setShowTimestamps,
-    translationLanguage, setTranslationLanguage,
-    spokenLanguage, setSpokenLanguage,
-    liveTranslationEnabled, setLiveTranslationEnabled,
-    isRecordingEnabled, setIsRecordingEnabled,
-    leftPanelWidth, rightPanelWidth, handleMouseDown, resetLayout,
-    transcriptTextSize, setTranscriptTextSize,
-    statCardOrder, setStatCardOrder,
-    viewModeOverride, setViewModeOverride,
-  } = useAppSettings();
+  // --- UI & State Management ---
+  const isMobileQuery = useMediaQuery('(max-width: 1023px)');
+  const isTrueMobile = useMemo(() => {
+    if (typeof navigator !== 'undefined') {
+      return /Mobi|Android/i.test(navigator.userAgent);
+    }
+    return false;
+  }, []);
+  const isMobileView = appSettings.viewModeOverride ? appSettings.viewModeOverride === 'mobile' : isMobileQuery;
 
-  const isSystemMobile = useMediaQuery('(max-width: 767px)');
-  const isMobileView = viewModeOverride === 'mobile' || (isSystemMobile && viewModeOverride !== 'desktop');
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [activeMobileTab, setActiveMobileTab] = useState<'controls' | 'transcript' | 'analytics'>('transcript');
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isImmersiveMode, setIsImmersiveMode] = useState(false);
+  const [isWelcomeModalOpen, setIsWelcomeModalOpen] = useState(() => {
+    try { return !localStorage.getItem('defscribe-hasWelcomed'); } catch { return true; }
+  });
+  const [highlightedTopic, setHighlightedTopic] = useState<string | null>(null);
+  const [visualizerHeight, setVisualizerHeight] = useState(() => isTrueMobile ? 120 : 280);
+  const [showVisualizerHint, setShowVisualizerHint] = useState(false);
+  const [isSettingsCollapsed, setIsSettingsCollapsed] = useState(true);
+  const [sessionKey, setSessionKey] = useState(1);
+
+  // --- Tour Hook & State ---
+  const [tourSummary, setTourSummary] = useState(SAMPLE_DATA.SAMPLE_SUMMARIES.detailed);
+  const [tourSummaryStyle, setTourSummaryStyle] = useState<SummaryStyle>('detailed');
+
+  const { isTourActive, currentStep, startTour, endTour, nextStep, prevStep, currentStepIndex, totalSteps } = useTour({
+    onStepChange: (step) => {
+      if (step.id === 'summary' && isMobileView) setActiveMobileTab('analytics');
+      if (step.id === 'open-settings') setIsSettingsCollapsed(false);
+      if (step.id === 'close-settings') setIsSettingsCollapsed(true);
+    }
+  });
+
+  // --- Core Functionality Hooks ---
+  const addToast = useCallback((title: string, message: string, type: ToastType) => {
+    setToasts(currentToasts => [...currentToasts.slice(-4), { id: Date.now(), title, message, type }]);
+  }, []);
+
+  const speech = useSpeechRecognition({
+    spokenLanguage: appSettings.spokenLanguage,
+    addToast,
+    isRecordingEnabled: appSettings.isRecordingEnabled,
+  });
+
+  const transcriptManager = useTranscript({
+    finalTranscript: speech.finalTranscript,
+    diarizationSettings: appSettings.diarizationSettings,
+    addToast,
+    liveTranslationEnabled: appSettings.liveTranslationEnabled,
+    translationLanguage: appSettings.translationLanguage,
+    isCloudMode: speech.isCloudMode,
+    stream: speech.stream,
+  });
+
+  const analytics = useAnalytics({
+    addToast,
+    transcriptEntries: transcriptManager.transcriptEntries,
+    startTime: transcriptManager.startTimeRef.current,
+    segments: transcriptManager.segments,
+    isListening: speech.isListening,
+    interimTranscript: speech.transcript,
+    recordingDuration: speech.recordingDuration,
+    isCloudMode: speech.isCloudMode,
+  });
+
+  // --- Derived State & Refs for Tour/Real Data ---
+  const displayedTranscriptEntries = isTourActive ? SAMPLE_DATA.SAMPLE_TRANSCRIPT_ENTRIES : transcriptManager.transcriptEntries;
+  const displayedSpeakerProfiles = isTourActive ? SAMPLE_DATA.SAMPLE_SPEAKER_PROFILES : transcriptManager.speakerProfiles;
+  const displayedSpeechAnalytics = isTourActive ? SAMPLE_DATA.SAMPLE_ANALYTICS : analytics.speechAnalytics;
+  const displayedSummary = isTourActive ? tourSummary : analytics.summary;
+  const displayedSummaryStyle = isTourActive ? tourSummaryStyle : analytics.summaryStyle;
+  const displayedActionItems = isTourActive ? SAMPLE_DATA.SAMPLE_ACTION_ITEMS : analytics.actionItems;
+  const displayedSnippets = isTourActive ? SAMPLE_DATA.SAMPLE_SNIPPETS : analytics.snippets;
+  const displayedTopics = isTourActive ? SAMPLE_DATA.SAMPLE_TOPICS : analytics.topics;
+  const displayedAvatarEmotion = isTourActive ? 'listening' : analytics.avatarEmotion;
+  const isDisplayedAnalyzing = isTourActive ? false : analytics.isAnalyzing;
+  const isDisplayedSummarizing = isTourActive ? false : analytics.isSummarizing;
+
+  const fullTranscriptText = useMemo(() => {
+    return displayedTranscriptEntries.map(entry => {
+        const speakerLabel = entry.speakerIds?.[0] ? displayedSpeakerProfiles[entry.speakerIds[0]]?.label || entry.speakerIds[0] : 'Unknown Speaker';
+        return `${speakerLabel}: ${entry.text}`;
+    }).join('\n');
+  }, [displayedTranscriptEntries, displayedSpeakerProfiles]);
+  
+  const hasContent = transcriptManager.transcriptEntries.length > 0 || speech.finalTranscript.length > 0;
+  const sessionActive = isTourActive || speech.isListening || hasContent;
+
+  const [liveTextState, setLiveTextState] = useState<'visible' | 'fading-out' | 'hidden'>('hidden');
+  const interimTranscriptRef = useRef(speech.transcript);
+  interimTranscriptRef.current = speech.transcript;
+
+  const prevIsListening = usePrevious(speech.isListening);
+  const prevIsWelcomeModalOpen = usePrevious(isWelcomeModalOpen);
 
   useEffect(() => {
-    // Adjust visualizer height when view mode changes
-    setVisualizerHeight(isMobileView ? SMALL_VISUALIZER_HEIGHT : LARGE_VISUALIZER_HEIGHT);
-  }, [isMobileView]);
+    if (prevIsWelcomeModalOpen && !isWelcomeModalOpen && !isTourActive) {
+      setShowVisualizerHint(true);
+    }
+  }, [isWelcomeModalOpen, prevIsWelcomeModalOpen, isTourActive]);
   
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const addToast = useCallback((title: string, message: string, type: ToastType) => {
-    setToasts((prev) => {
-      const newToast = { id: Date.now(), title, message, type };
-      const updated = [...prev, newToast];
-      return updated.slice(-MAX_TOASTS);
-    });
-  }, []);
+  useEffect(() => {
+    if (prevIsListening && !speech.isListening && fullTranscriptText.trim() && !isTourActive) {
+        analytics.generateAllAnalytics(fullTranscriptText, transcriptManager.speakerProfiles);
+    }
+  }, [speech.isListening, prevIsListening, fullTranscriptText, transcriptManager.speakerProfiles, analytics.generateAllAnalytics, isTourActive]);
+
+  useEffect(() => {
+    let fadeTimer: number;
+    if (speech.isListening) {
+      if (speech.transcript) {
+        setLiveTextState('visible');
+      } else if (liveTextState === 'visible') {
+        setLiveTextState('fading-out');
+        fadeTimer = window.setTimeout(() => {
+          if (!interimTranscriptRef.current) setLiveTextState('hidden');
+        }, 500);
+      }
+    } else {
+      setLiveTextState('hidden');
+    }
+    return () => clearTimeout(fadeTimer);
+  }, [speech.transcript, speech.isListening, liveTextState]);
   
-  const handleCloseWelcomeModal = () => {
+  const handleWelcomeClose = () => {
     setIsWelcomeModalOpen(false);
-    // After a short delay (for modal fade-out), start glowing the button
-    setTimeout(() => {
-        setIsStartButtonGlowing(true);
-        // Turn off the glow state after the animation finishes (5s)
-        setTimeout(() => {
-            setIsStartButtonGlowing(false);
-        }, 5000); // Animation is 2.5s and runs twice
-    }, 500); // Delay after modal closes
+    try { localStorage.setItem('defscribe-hasWelcomed', 'true'); } catch {}
   };
 
-  useEffect(() => {
-    const hasVisited = localStorage.getItem('defscribe-has-visited');
-    if (!hasVisited) {
-      setIsWelcomeModalOpen(true);
-      localStorage.setItem('defscribe-has-visited', 'true');
-    }
-  }, []);
-  
-  const dismissToast = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
-  }, []);
-
-  const { isListening, transcript, finalTranscript, error, startListening, stopListening, clearTranscript, confidence, isCloudMode, stream, audioBlobUrl, deleteAudio, recordingDuration } = useSpeechRecognition({
-    spokenLanguage,
-    addToast,
-    isRecordingEnabled,
-  });
-  
-  useEffect(() => { if (error) { addToast('System Info', error, 'info'); } }, [error, addToast]);
-
-  const {
-    transcriptEntries,
-    activeSpeaker,
-    speakerProfiles,
-    clearTranscriptEntries,
-    startTimeRef,
-    segments,
-    handleUpdateSpeakerLabel,
-    handleReassignSpeakerForEntry,
-    handleTranslateEntry,
-  } = useTranscript({
-      finalTranscript,
-      diarizationSettings,
-      addToast,
-      liveTranslationEnabled,
-      translationLanguage,
-      isCloudMode,
-      stream,
-  });
-
-  const {
-    summary, summaryStyle,
-    actionItems, snippets, topics,
-    isAnalyzing, isSummarizing,
-    avatarEmotion,
-    speechAnalytics,
-    generateAllAnalytics,
-    handleSummarize,
-    clearAnalytics,
-  } = useAnalytics({
-      addToast,
-      transcriptEntries,
-      startTime: startTimeRef.current,
-      segments,
-      isListening,
-      interimTranscript: transcript,
-  });
-
-  const [isImmersive, setIsImmersive] = useState(false);
-  const [isImmersiveButtonGlowing, setIsImmersiveButtonGlowing] = useState(true);
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>('transcript');
-  const fullTranscriptText = transcriptEntries.map(e => (speakerProfiles[e.speakerIds?.[0] || '']?.label || e.speakerIds?.[0] || 'Speaker') + ': ' + e.text).join('\n');
-
-  useEffect(() => {
-    const initialGlowTimeout = setTimeout(() => setIsImmersiveButtonGlowing(false), 6000);
-    return () => clearTimeout(initialGlowTimeout);
-  }, []);
+  const handleStartTour = () => {
+    handleWelcomeClose();
+    setTimeout(() => {
+        if (isMobileView) setActiveMobileTab('controls');
+        setTourSummaryStyle('detailed');
+        setTourSummary(SAMPLE_DATA.SAMPLE_SUMMARIES.detailed);
+        startTour();
+    }, 300);
+  };
 
   const handleStart = () => {
-    startListening();
-    setSessionActive(true);
+    if (isTourActive) return;
+    speech.startListening();
   };
 
-  const handleStop = async () => {
-    stopListening();
-    addToast('Listening Stopped', 'Recording has been paused.', 'info');
-    if (fullTranscriptText.trim().length > 10) {
-      generateAllAnalytics(fullTranscriptText, speakerProfiles);
+  const handleStop = () => {
+    if (isTourActive) return;
+    speech.stopListening();
+  };
+
+  const handleClear = () => {
+    if (isTourActive) return;
+    speech.clearTranscript();
+    transcriptManager.clearTranscriptEntries();
+    analytics.clearAnalytics();
+    setHighlightedTopic(null); // Reset any highlighted topic
+    // If chat is open, close it so mobile users see the cleared state immediately.
+    setIsChatOpen(false);
+    // On mobile view, switch to the transcript tab to show the cleared state.
+    if (isMobileView) {
+      setActiveMobileTab('transcript');
     }
+    setSessionKey(prev => prev + 1);
   };
 
-  const clearSessionAction = useCallback(() => {
-    stopListening();
-    clearTranscript();
-    clearTranscriptEntries();
-    clearAnalytics();
-    setSessionActive(false);
-    setHighlightedTopic(null);
-  }, [stopListening, clearTranscript, clearTranscriptEntries, clearAnalytics]);
-
-  const handleConfirmClear = () => {
-      clearSessionAction();
-      addToast('Cleared', 'The session has been cleared.', 'info');
-      setIsClearConfirmOpen(false);
-  };
-
-  const handleClear = useCallback(() => {
-    const fullTranscriptText = transcriptEntries.map(e => e.text).join('');
-    if (fullTranscriptText.trim().length === 0 && !audioBlobUrl) {
-      clearSessionAction();
+  const handleSummarize = (style: SummaryStyle) => {
+    if (isTourActive) {
+      setTourSummaryStyle(style);
+      setTourSummary(SAMPLE_DATA.SAMPLE_SUMMARIES[style]);
+      if (isMobileView) setActiveMobileTab('analytics');
       return;
     }
-    setIsClearConfirmOpen(true);
-  }, [transcriptEntries, clearSessionAction, audioBlobUrl]);
-
-  const handleResetLayout = () => {
-    resetLayout();
-    setVisualizerHeight(getInitialVisualizerHeight());
+    analytics.handleSummarize(fullTranscriptText, style);
+    if(isMobileView) setActiveMobileTab('analytics');
+  };
+  
+  const handleOpenChat = () => setIsChatOpen(true);
+  
+  const dismissToast = (id: number) => {
+    setToasts(currentToasts => currentToasts.filter(toast => toast.id !== id));
   };
 
-
-  const shortcutsForTooltip = [
-    { key: ' ', description: 'Toggle recording' },
-    { key: 'm', ctrl: true, description: 'Toggle Audio Recording' },
-    { key: 'i', ctrl: true, description: 'Toggle immersive mode' },
-    { key: 'c', ctrl: true, shift: true, description: 'Clear session' },
-    { key: '/', ctrl: true, description: 'Toggle chat' },
-    { key: 'f', description: 'Toggle fullscreen (Immersive)'},
-    { key: 'm', description: 'Toggle menu (Immersive)'},
-    { key: 'Escape', description: 'Close modals / Exit immersive' }
-  ];
-
-  useKeyboardNavigation([
-    { key: ' ', handler: () => isListening ? handleStop() : handleStart(), description: 'Toggle recording' },
-    { key: 'm', ctrl: true, handler: () => setIsRecordingEnabled(!isRecordingEnabled), description: 'Toggle audio recording' },
-    { key: 'i', ctrl: true, handler: () => setIsImmersive(!isImmersive), description: 'Toggle immersive mode' },
-    { key: 'c', ctrl: true, shift: true, handler: handleClear, description: 'Clear session' },
-    { key: '/', ctrl: true, handler: () => setIsChatOpen(!isChatOpen), description: 'Toggle chat' },
-  ], !isImmersive);
+  const handleToggleViewMode = useCallback(() => {
+    if (isMobileView) {
+      appSettings.setViewModeOverride('desktop');
+    } else {
+      appSettings.setViewModeOverride('mobile');
+    }
+  }, [isMobileView, appSettings.setViewModeOverride]);
   
-  if (isImmersive) {
+  const shortcuts = useMemo(() => [
+    { key: ' ', ctrl: false, shift: false, handler: () => speech.isListening ? handleStop() : handleStart(), description: 'Start / Stop Listening' },
+    { key: 'i', ctrl: true, shift: false, handler: () => setIsImmersiveMode(p => !p), description: 'Toggle Immersive Mode' },
+    { key: 'e', ctrl: true, shift: false, handler: () => setIsExportModalOpen(true), description: 'Open Export Menu' },
+    { key: 'k', ctrl: true, shift: false, handler: handleOpenChat, description: 'Chat with Transcript' },
+    { key: 'Backspace', ctrl: true, shift: true, handler: handleClear, description: 'Clear Session' },
+    { key: 'm', ctrl: true, shift: false, handler: () => { if (speech.isListening) { appSettings.setIsRecordingEnabled(!appSettings.isRecordingEnabled); } }, description: 'Mute/Unmute Recording' },
+    { key: 'v', ctrl: true, shift: false, handler: handleToggleViewMode, description: 'Toggle Mobile/Desktop View' },
+  ], [speech.isListening, handleStart, handleStop, handleClear, handleOpenChat, appSettings.isRecordingEnabled, appSettings.setIsRecordingEnabled, handleToggleViewMode]);
+
+  useKeyboardNavigation(shortcuts, !isChatOpen && !isExportModalOpen && !isImmersiveMode && !isWelcomeModalOpen && !isTourActive);
+
+  if (isImmersiveMode) {
     return (
-      <ErrorBoundary>
-        <ImmersiveMode
-          isListening={isListening}
-          transcriptEntries={transcriptEntries}
-          interimTranscript={transcript}
-          stream={stream}
-          themeColors={themeColors}
-          onExit={() => setIsImmersive(false)}
-          onToggleListen={isListening ? handleStop : handleStart}
-          avatarEmotion={avatarEmotion}
-          avatarMap={AVATAR_EMOTIONS}
-        />
-      </ErrorBoundary>
+      <ImmersiveMode 
+        isListening={speech.isListening}
+        transcriptEntries={displayedTranscriptEntries}
+        interimTranscript={speech.transcript}
+        stream={speech.stream}
+        themeColors={appSettings.themeColors}
+        onExit={() => setIsImmersiveMode(false)}
+        onToggleListen={() => speech.isListening ? handleStop() : handleStart()}
+        avatarEmotion={displayedAvatarEmotion}
+        avatarMap={AVATAR_EMOTIONS}
+        isTrueMobile={isTrueMobile}
+      />
     );
   }
+
+  const controlPanel = (
+    <ControlPanel
+        isListening={speech.isListening}
+        isAnalyzing={isDisplayedAnalyzing}
+        isSummarizing={isDisplayedSummarizing}
+        wpm={displayedSpeechAnalytics.wpm || 0}
+        confidence={speech.confidence}
+        finalTranscript={speech.finalTranscript}
+        onStart={handleStart}
+        onStop={handleStop}
+        onClear={handleClear}
+        onGoImmersive={() => setIsImmersiveMode(true)}
+        isImmersiveButtonGlowing={!sessionActive}
+        isStartButtonGlowing={!sessionActive}
+        themeId={appSettings.themeId}
+        setThemeId={appSettings.setThemeId}
+        customThemeColors={appSettings.customThemeColors}
+        setCustomThemeColors={appSettings.setCustomThemeColors}
+        diarizationSettings={appSettings.diarizationSettings}
+        setDiarizationSettings={appSettings.setDiarizationSettings}
+        translationLanguage={appSettings.translationLanguage}
+        setTranslationLanguage={appSettings.setTranslationLanguage}
+        spokenLanguage={appSettings.spokenLanguage}
+        setSpokenLanguage={appSettings.setSpokenLanguage}
+        liveTranslationEnabled={appSettings.liveTranslationEnabled}
+        setLiveTranslationEnabled={appSettings.setLiveTranslationEnabled}
+        onExport={() => setIsExportModalOpen(true)}
+        sessionActive={sessionActive}
+        hasContent={hasContent}
+        shortcuts={shortcuts}
+        isMobileView={isMobileView}
+        isTrueMobile={isTrueMobile}
+        setViewModeOverride={appSettings.setViewModeOverride}
+        isSettingsCollapsed={isSettingsCollapsed}
+        setIsSettingsCollapsed={setIsSettingsCollapsed}
+        isTourActive={isTourActive}
+    />
+  );
+  
+  const mainContentPanel = (
+    <MainContentPanel
+      isListening={isTourActive ? true : speech.isListening}
+      stream={speech.stream}
+      themeColors={appSettings.themeColors}
+      transcriptEntries={displayedTranscriptEntries}
+      liveText={isTourActive ? "This is where your live text appears as you speak..." : speech.transcript}
+      liveTextState={isTourActive ? 'visible' : liveTextState}
+      activeSpeaker={transcriptManager.activeSpeaker}
+      speakerProfiles={displayedSpeakerProfiles}
+      handleUpdateSpeakerLabel={transcriptManager.handleUpdateSpeakerLabel}
+      showTimestamps={appSettings.showTimestamps}
+      setShowTimestamps={appSettings.setShowTimestamps}
+      diarizationEnabled={appSettings.diarizationSettings.enabled}
+      onOpenChat={handleOpenChat}
+      onTranslateEntry={(entryId) => transcriptManager.handleTranslateEntry(entryId, appSettings.translationLanguage)}
+      onReassignSpeaker={transcriptManager.handleReassignSpeakerForEntry}
+      transcriptTextSize={appSettings.transcriptTextSize}
+      setTranscriptTextSize={appSettings.setTranscriptTextSize}
+      visualizerHeight={visualizerHeight}
+      setVisualizerHeight={setVisualizerHeight}
+      highlightedTopic={highlightedTopic}
+      audioBlobUrl={speech.audioBlobUrl}
+      onDeleteAudio={speech.deleteAudio}
+      recordingDuration={speech.recordingDuration}
+      onStop={handleStop}
+      onStart={handleStart}
+      isRecordingEnabled={appSettings.isRecordingEnabled}
+      setIsRecordingEnabled={appSettings.setIsRecordingEnabled}
+      isTrueMobile={isTrueMobile}
+      showVisualizerHint={showVisualizerHint}
+    />
+  );
+
+  const analyticsPanel = (
+    <AnalyticsPanel
+      isSummarizing={isDisplayedSummarizing}
+      summary={displayedSummary}
+      summaryStyle={displayedSummaryStyle}
+      onSummarize={handleSummarize}
+      actionItems={displayedActionItems}
+      snippets={displayedSnippets}
+      topics={displayedTopics}
+      isAnalyzing={isDisplayedAnalyzing}
+      speechAnalytics={displayedSpeechAnalytics}
+      speakerProfiles={displayedSpeakerProfiles}
+      transcriptEntries={displayedTranscriptEntries}
+      highlightedTopic={highlightedTopic}
+      onSetHighlightedTopic={setHighlightedTopic}
+      statCardOrder={appSettings.statCardOrder}
+      setStatCardOrder={appSettings.setStatCardOrder}
+      isTourActive={isTourActive}
+      currentTourStepId={currentStep?.id}
+    />
+  );
 
   return (
     <ErrorBoundary>
       <CosmicBackground />
-      <WelcomeModal isOpen={isWelcomeModalOpen} onClose={handleCloseWelcomeModal} />
-      <ConfirmationModal
-        isOpen={isClearConfirmOpen}
-        onClose={() => setIsClearConfirmOpen(false)}
-        onConfirm={handleConfirmClear}
-        title="Confirm Clear Session"
-        message="Are you sure you want to permanently clear the entire session? This action cannot be undone."
-        confirmText="Clear Session"
-      />
-
-      <div className="fixed bottom-4 right-4 z-[100] flex items-center gap-3">
-        {!isSystemMobile && (
-          <ViewSwitcher
-            viewModeOverride={viewModeOverride}
-            setViewModeOverride={setViewModeOverride}
-          />
+      <main className={`h-screen w-screen bg-[var(--color-bg-deep)] text-slate-200 flex ${isMobileView ? 'flex-col' : 'flex-col md:flex-row md:p-3 md:gap-3'}`}>
+        {isMobileView ? (
+          <>
+            <div className="flex-1 min-h-0">
+              {activeMobileTab === 'controls' && <div className="h-full">{controlPanel}</div>}
+              {activeMobileTab === 'transcript' && <div className="h-full">{mainContentPanel}</div>}
+              {activeMobileTab === 'analytics' && <div className="h-full">{analyticsPanel}</div>}
+            </div>
+            <BottomNav 
+              activeTab={activeMobileTab} 
+              onTabChange={setActiveMobileTab} 
+              actionItemsCount={displayedActionItems.length}
+              snippetsCount={displayedSnippets.length}
+            />
+          </>
+        ) : (
+          <>
+            <div style={{ width: `${appSettings.leftPanelWidth}px` }} className="h-full flex-shrink-0">
+                {controlPanel}
+            </div>
+            <div className="resizer" onMouseDown={() => appSettings.handleMouseDown('left')}></div>
+            <div className="flex-1 h-full min-w-0" data-tour-id="transcript-panel">
+                {mainContentPanel}
+            </div>
+            <div className="resizer" onMouseDown={() => appSettings.handleMouseDown('right')}></div>
+            <div style={{ width: `${appSettings.rightPanelWidth}px` }} className="h-full flex-shrink-0" data-tour-id="analytics-panel">
+                {analyticsPanel}
+            </div>
+          </>
         )}
-      </div>
-
-      <div className={`fixed ${activeMobileTab === 'controls' ? 'bottom-20' : 'top-20'} right-4 z-[100] w-full max-w-sm space-y-2`}>
+      </main>
+      
+      <div className={`fixed z-[100] w-full max-w-sm space-y-2 ${isMobileView ? 'top-4 left-1/2 -translate-x-1/2' : 'top-4 right-4'}`}>
         {toasts.map((toast) => <Toast key={toast.id} toast={toast} onDismiss={dismissToast} />)}
       </div>
-      
-      {isChatOpen && <TranscriptChat transcript={fullTranscriptText} onClose={() => setIsChatOpen(false)} translationLanguage={translationLanguage} />}
+
+      {isWelcomeModalOpen && <WelcomeModal isOpen={isWelcomeModalOpen} onClose={handleWelcomeClose} onStartTour={handleStartTour} isTrueMobile={isTrueMobile} />}
+      {isChatOpen && <TranscriptChat key={sessionKey} transcript={fullTranscriptText} onClose={() => setIsChatOpen(false)} translationLanguage={appSettings.translationLanguage} isMobile={isMobileView} />}
+      {isTourActive && currentStep && (
+        <TourGuide
+          step={currentStep}
+          currentStepIndex={currentStepIndex}
+          totalSteps={totalSteps}
+          onNext={nextStep}
+          onPrev={prevStep}
+          onEnd={endTour}
+        />
+      )}
       <ExportModal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
-        transcriptEntries={transcriptEntries}
-        speakerProfiles={speakerProfiles}
-        speechAnalytics={speechAnalytics}
-        diarizationSettings={diarizationSettings}
-        confidence={confidence}
-        summary={summary}
-        actionItems={actionItems}
-        snippets={snippets}
-        topics={topics}
+        transcriptEntries={displayedTranscriptEntries}
+        speakerProfiles={displayedSpeakerProfiles}
+        speechAnalytics={displayedSpeechAnalytics}
+        diarizationSettings={appSettings.diarizationSettings}
+        confidence={speech.confidence}
+        summary={displayedSummary}
+        actionItems={displayedActionItems}
+        snippets={displayedSnippets}
+        topics={displayedTopics}
       />
-      
-      <div className="h-screen text-slate-200 flex flex-col">
-        <main
-          className={`flex-1 min-h-0 z-20 ${isMobileView ? 'flex flex-col' : 'grid p-4 gap-4'}`}
-          style={!isMobileView ? { gridTemplateColumns: `minmax(0, ${leftPanelWidth}px) 5px minmax(0, 1fr) 5px minmax(0, ${rightPanelWidth}px)`, gridTemplateRows: 'minmax(0, 1fr)' } : {}}
-        >
-          <div className={`${isMobileView ? (activeMobileTab === 'controls' ? 'block' : 'hidden') : 'block'} h-full`}>
-            <ControlPanel
-              isListening={isListening}
-              isAnalyzing={isAnalyzing}
-              isSummarizing={isSummarizing}
-              wpm={speechAnalytics.wpm || 0}
-              confidence={confidence}
-              finalTranscript={fullTranscriptText}
-              onStart={handleStart}
-              onStop={handleStop}
-              onClear={handleClear}
-              onGoImmersive={() => setIsImmersive(true)}
-              isImmersiveButtonGlowing={isImmersiveButtonGlowing}
-              isStartButtonGlowing={isStartButtonGlowing}
-              themeId={themeId}
-              setThemeId={setThemeId}
-              customThemeColors={customThemeColors}
-              setCustomThemeColors={setCustomThemeColors}
-              diarizationSettings={diarizationSettings}
-              setDiarizationSettings={setDiarizationSettings}
-              translationLanguage={translationLanguage}
-              setTranslationLanguage={setTranslationLanguage}
-              spokenLanguage={spokenLanguage}
-              setSpokenLanguage={setSpokenLanguage}
-              liveTranslationEnabled={liveTranslationEnabled}
-              setLiveTranslationEnabled={setLiveTranslationEnabled}
-              onResetLayout={handleResetLayout}
-              onExport={() => setIsExportModalOpen(true)}
-              sessionActive={sessionActive}
-              shortcuts={shortcutsForTooltip}
-            />
-          </div>
-          <div
-            className={`w-[5px] h-full cursor-col-resize bg-slate-700/50 hover:bg-[var(--color-primary)] transition-colors duration-200 ${isMobileView ? 'hidden' : 'block'}`}
-            onMouseDown={() => handleMouseDown('left')}
-          />
-          <div className={`${isMobileView ? (activeMobileTab === 'transcript' ? 'block' : 'hidden') : 'block'} h-full min-w-0`}>
-            <MainContentPanel
-              isListening={isListening}
-              stream={stream}
-              themeColors={themeColors}
-              transcriptEntries={transcriptEntries}
-              liveText={transcript}
-              liveTextState={'visible'}
-              activeSpeaker={activeSpeaker}
-              speakerProfiles={speakerProfiles}
-              handleUpdateSpeakerLabel={handleUpdateSpeakerLabel}
-              showTimestamps={showTimestamps}
-              setShowTimestamps={setShowTimestamps}
-              diarizationEnabled={diarizationSettings.enabled}
-              onOpenChat={() => setIsChatOpen(true)}
-              onTranslateEntry={(entryId) => handleTranslateEntry(entryId, translationLanguage)}
-              onReassignSpeaker={handleReassignSpeakerForEntry}
-              transcriptTextSize={transcriptTextSize}
-              setTranscriptTextSize={setTranscriptTextSize}
-              visualizerHeight={visualizerHeight}
-              setVisualizerHeight={setVisualizerHeight}
-              highlightedTopic={highlightedTopic}
-              audioBlobUrl={audioBlobUrl}
-              onDeleteAudio={deleteAudio}
-              recordingDuration={recordingDuration}
-              onStop={handleStop}
-              onStart={handleStart}
-              isRecordingEnabled={isRecordingEnabled}
-              setIsRecordingEnabled={setIsRecordingEnabled}
-            />
-          </div>
-          <div
-            className={`w-[5px] h-full cursor-col-resize bg-slate-700/50 hover:bg-[var(--color-primary)] transition-colors duration-200 ${isMobileView ? 'hidden' : 'block'}`}
-            onMouseDown={() => handleMouseDown('right')}
-          />
-          <div className={`${isMobileView ? (activeMobileTab === 'analytics' ? 'block' : 'hidden') : 'block'} h-full`}>
-            <AnalyticsPanel
-                isSummarizing={isSummarizing}
-                summary={summary}
-                summaryStyle={summaryStyle}
-                onSummarize={(style) => handleSummarize(fullTranscriptText, style)}
-                actionItems={actionItems}
-                snippets={snippets}
-                topics={topics}
-                isAnalyzing={isAnalyzing}
-                speechAnalytics={speechAnalytics}
-                speakerProfiles={speakerProfiles}
-                transcriptEntries={transcriptEntries}
-                highlightedTopic={highlightedTopic}
-                onSetHighlightedTopic={setHighlightedTopic}
-                statCardOrder={statCardOrder}
-                setStatCardOrder={setStatCardOrder}
-            />
-          </div>
-        </main>
-        {isMobileView && <BottomNav
-            activeTab={activeMobileTab}
-            onTabChange={setActiveMobileTab}
-            actionItemsCount={actionItems.length}
-            snippetsCount={snippets.length}
-        />}
-      </div>
     </ErrorBoundary>
   );
 };

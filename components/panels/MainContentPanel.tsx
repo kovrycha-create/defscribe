@@ -35,6 +35,8 @@ interface MainContentPanelProps {
   onStart: () => void;
   isRecordingEnabled: boolean;
   setIsRecordingEnabled: (enabled: boolean) => void;
+  isTrueMobile: boolean;
+  showVisualizerHint: boolean;
 }
 
 const MainContentPanel: React.FC<MainContentPanelProps> = ({
@@ -42,10 +44,22 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
   activeSpeaker, speakerProfiles, handleUpdateSpeakerLabel, showTimestamps, setShowTimestamps, diarizationEnabled, onOpenChat,
   onTranslateEntry, onReassignSpeaker, transcriptTextSize, setTranscriptTextSize,
   visualizerHeight, setVisualizerHeight, highlightedTopic, audioBlobUrl, onDeleteAudio,
-  recordingDuration, onStop, onStart, isRecordingEnabled, setIsRecordingEnabled,
+  recordingDuration, onStop, onStart, isRecordingEnabled, setIsRecordingEnabled, isTrueMobile,
+  showVisualizerHint
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingSpeaker, setEditingSpeaker] = useState<SpeakerProfile | null>(null);
+  const [flashHint, setFlashHint] = useState(false);
+
+  useEffect(() => {
+    if (showVisualizerHint) {
+        setFlashHint(true);
+        const timer = setTimeout(() => {
+            setFlashHint(false);
+        }, 3000); // 1.5s animation * 2 iterations
+        return () => clearTimeout(timer);
+    }
+  }, [showVisualizerHint]);
 
   const [autoScroll, setAutoScroll] = useState(true);
   const [newContentSinceScroll, setNewContentSinceScroll] = useState(false);
@@ -59,6 +73,8 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
   const SMALL_VISUALIZER_HEIGHT = 120;
   const LARGE_VISUALIZER_HEIGHT = 280;
   const visualizerContainerRef = useRef<HTMLDivElement>(null);
+  
+  const isTranscriptEmptyOnMobile = isTrueMobile && transcriptEntries.length === 0 && isListening;
 
   const handleVisualizerResizeToggle = () => {
     setVisualizerHeight(currentHeight => 
@@ -138,7 +154,7 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
                 placeholder="Search transcript..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full sm:w-52 cosmo-input rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none"
+                className="w-full sm:w-72 cosmo-input rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none"
                 />
             </div>
             
@@ -196,10 +212,13 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
         </div>
         
         <Tooltip content="Double-click to toggle size">
-            <div className="visualizer-resizer-handle" onDoubleClick={handleVisualizerResizeToggle} />
+            <div 
+                className={`visualizer-resizer-handle ${flashHint ? 'flash-hint' : ''}`}
+                onDoubleClick={handleVisualizerResizeToggle}
+            />
         </Tooltip>
 
-        <div className="flex-1 min-h-0 bg-slate-900/50 rounded-xl border border-[rgba(var(--color-primary-rgb),0.2)] shadow-inner z-10">
+        <div className={`flex-1 min-h-0 bg-slate-900/50 rounded-xl border border-[rgba(var(--color-primary-rgb),0.2)] shadow-inner z-10 transition-opacity ${isTranscriptEmptyOnMobile ? 'opacity-40' : 'opacity-100'}`}>
           <TranscriptDisplay
             entries={transcriptEntries}
             isListening={isListening}
@@ -217,6 +236,7 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
             onTranslateEntry={onTranslateEntry}
             onReassignSpeaker={onReassignSpeaker}
             transcriptTextSize={transcriptTextSize}
+            isTrueMobile={isTrueMobile}
           />
         </div>
       </div>

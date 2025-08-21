@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { type ChatMessage } from '../types';
@@ -10,9 +11,10 @@ interface TranscriptChatProps {
   transcript: string;
   onClose: () => void;
   translationLanguage: string;
+  isMobile: boolean;
 }
 
-const TranscriptChat: React.FC<TranscriptChatProps> = ({ transcript, onClose, translationLanguage }) => {
+const TranscriptChat: React.FC<TranscriptChatProps> = ({ transcript, onClose, translationLanguage, isMobile }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -32,7 +34,27 @@ const TranscriptChat: React.FC<TranscriptChatProps> = ({ transcript, onClose, tr
   const textSizeClasses = { sm: 'text-sm', base: 'text-base', lg: 'text-lg', xl: 'text-2xl' };
   const textSizeLabels = { sm: 'Small', base: 'Medium', lg: 'Large', xl: 'X-Large' };
   const nextTextSizeLabel = { sm: 'Medium', base: 'Large', lg: 'X-Large', xl: 'Small' };
-  
+
+  useEffect(() => {
+    // When the component mounts (or remounts due to the `key` prop changing),
+    // this effect will run.
+    if (isMobile) {
+        try {
+            const hasSeenInfo = localStorage.getItem('defscribe-chatMobileInfoSeen');
+            if (!hasSeenInfo) {
+                setMessages(prev => [...prev, {
+                    id: 'info-mobile',
+                    role: 'model',
+                    text: "You're on a mobile device! The chat context is based on the transcript when you opened this window. New spoken text won't be included until you close and reopen the chat."
+                }]);
+                localStorage.setItem('defscribe-chatMobileInfoSeen', 'true');
+            }
+        } catch (e) {
+            console.warn("Could not access localStorage for chat info message.");
+        }
+    }
+  }, [isMobile]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
@@ -237,7 +259,7 @@ const TranscriptChat: React.FC<TranscriptChatProps> = ({ transcript, onClose, tr
                       {msg.isLoading && <span className="inline-block w-2 h-2 bg-slate-300 rounded-full ml-2 animate-ping"></span>}
                       {msg.translatedText && <p className={`italic text-slate-400 mt-2 pt-2 border-t border-slate-600/50 ${textSizeClasses[textSize]}`}>{msg.translatedText}</p>}
                   </div>
-                   {msg.role === 'model' && !msg.isLoading && msg.text && (
+                   {msg.role === 'model' && !msg.isLoading && msg.text && msg.id !== 'info-mobile' && (
                        <div className="absolute top-0 left-12 z-20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-slate-800/90 backdrop-blur-sm rounded-full border border-slate-600 p-1 shadow-lg">
                            <Tooltip content="Translate">
                                 <button onClick={() => handleTranslate(msg.id, msg.text)} disabled={!!isTranslatingId} className="w-7 h-7 bg-slate-600 rounded-full flex items-center justify-center text-slate-300 hover:bg-slate-500 disabled:opacity-50 disabled:cursor-wait" aria-label="Translate message">

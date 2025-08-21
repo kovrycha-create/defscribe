@@ -1,4 +1,5 @@
 
+
 import { useState, useCallback, useEffect } from 'react';
 import { 
     generateSummary, 
@@ -27,6 +28,8 @@ interface UseAnalyticsProps {
     segments: DiarizationSegment[];
     isListening: boolean;
     interimTranscript: string;
+    recordingDuration: number;
+    isCloudMode: boolean;
 }
 
 const useAnalytics = ({ 
@@ -35,7 +38,9 @@ const useAnalytics = ({
     startTime, 
     segments, 
     isListening, 
-    interimTranscript 
+    interimTranscript,
+    recordingDuration,
+    isCloudMode,
 }: UseAnalyticsProps) => {
     const [summary, setSummary] = useState<string>('Your transcript summary will appear here.');
     const [summaryStyle, setSummaryStyle] = useState<SummaryStyle | null>(null);
@@ -57,7 +62,7 @@ const useAnalytics = ({
 
 
     useEffect(() => {
-        if (transcriptEntries.length === 0 || !startTime) {
+        if (transcriptEntries.length === 0) {
             setSpeechAnalytics({});
             return;
         }
@@ -65,8 +70,8 @@ const useAnalytics = ({
         const fullText = transcriptEntries.map(e => e.text).join(' ');
         const words = fullText.split(/\s+/).filter(Boolean);
         
-        const duration = (Date.now() - startTime) / 1000;
-        const wpm = duration > 10 ? (words.length / (duration / 60)) : 0;
+        const duration = isCloudMode ? recordingDuration : (startTime ? (Date.now() - startTime) / 1000 : 0);
+        const wpm = duration > 1 ? (words.length / (duration / 60)) : 0;
 
         let speakingRateLabel: 'Slow' | 'Medium' | 'Fast' = 'Medium';
         if (wpm < 140) speakingRateLabel = 'Slow';
@@ -124,7 +129,7 @@ const useAnalytics = ({
             vocabularyRichness,
         }));
 
-    }, [transcriptEntries, startTime, segments]);
+    }, [transcriptEntries, startTime, segments, isCloudMode, recordingDuration]);
 
     const handleSummarize = useCallback(async (transcript: string, style: SummaryStyle) => {
         if (transcript.trim().length < 10) {

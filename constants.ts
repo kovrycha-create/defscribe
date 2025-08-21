@@ -10,9 +10,12 @@ export const FILLER_WORDS: Set<string> = new Set([
 
 export const THEME_PRESETS: { [key: number]: { primary: string; secondary:string; accent: string } } = {
   1: { primary: "#4d8aff", secondary: "#a777ff", accent: "#ffc94d" }, // CosmoTech Default
-  2: { primary: "#4dffd4", secondary: "#d8aaff", accent: "#ff6b6b" }, // Cyan Nebula
+  2: { primary: "#cc0011", secondary: "#ffd700", accent: "#ff69b4" }, // Crimson Gold
   3: { primary: "#a777ff", secondary: "#ff6b6b", accent: "#4dffd4" }, // Violet Flare
   4: { primary: "#ffbe0b", secondary: "#4d8aff", accent: "#ff6b6b" }, // Gold Supernova
+  5: { primary: "#ff7e5f", secondary: "#feb47b", accent: "#ff5e62" }, // Solar Flare
+  6: { primary: "#e0e0e0", secondary: "#b0c4de", accent: "#87ceeb" }, // Starlight
+  7: { primary: "#00c9a7", secondary: "#84e7d1", accent: "#c5f2e9" }, // Galactic Jade
 };
 
 export const AVATAR_EMOTIONS: Record<Emotion, string> = {

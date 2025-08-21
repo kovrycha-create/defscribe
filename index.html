@@ -288,6 +288,23 @@
         transform: scaleY(2);
         box-shadow: 0 0 10px rgba(var(--color-primary-rgb), 0.5);
       }
+      
+      @keyframes resizer-flash {
+        0%, 100% {
+          opacity: 0.3;
+          transform: scaleY(1);
+          box-shadow: none;
+        }
+        50% {
+          opacity: 1;
+          transform: scaleY(2);
+          box-shadow: 0 0 10px rgba(var(--color-primary-rgb), 0.5);
+        }
+      }
+
+      .visualizer-resizer-handle.flash-hint::before {
+        animation: resizer-flash 1.5s ease-in-out 2;
+      }
 
       body.resizing-visualizer {
         cursor: row-resize;
@@ -351,6 +368,17 @@
       @keyframes char-slide-in {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
+      }
+
+      @keyframes marquee {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-100%); }
+      }
+      .animate-marquee {
+        display: inline-block;
+        padding-left: 100%;
+        white-space: nowrap;
+        animation: marquee 15s linear infinite;
       }
 
       @keyframes slide-fade-in {
@@ -631,6 +659,11 @@
         height: 18px;
         width: 18px;
         box-shadow: 0 0 10px rgba(var(--color-primary-rgb), 0.5);
+      }
+
+      /* Tour Guide */
+      .tour-overlay-path {
+        transition: d 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       }
     </style>
   <script type="importmap">

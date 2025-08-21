@@ -18,9 +18,10 @@ interface BackgroundPenLogoProps {
     finalTranscript: string;
     sessionActive: boolean;
     isExpanded: boolean;
+    isMobileView: boolean;
 }
 
-const BackgroundPenLogo: React.FC<BackgroundPenLogoProps> = ({ isListening, isSummarizing, wpm, confidence, finalTranscript, sessionActive, isExpanded }) => {
+const BackgroundPenLogo: React.FC<BackgroundPenLogoProps> = ({ isListening, isSummarizing, wpm, confidence, finalTranscript, sessionActive, isExpanded, isMobileView }) => {
     const [easterEgg, setEasterEgg] = useState(false);
     const scribblePathRef = useRef<SVGPathElement>(null);
     const lastPointRef = useRef({ x: 128, y: 220 });
@@ -183,7 +184,7 @@ const BackgroundPenLogo: React.FC<BackgroundPenLogoProps> = ({ isListening, isSu
             style={{ opacity: isListening || isSummarizing ? '1' : '0.7' }}
             aria-hidden="true"
         >
-            <div className={`relative w-64 h-64 transition-transform duration-500 ease-in-out ${isExpanded ? 'scale-[1.4]' : 'scale-100'}`}>
+            <div className={`relative ${isMobileView ? 'w-48 h-48' : 'w-72 h-72'} transition-transform duration-500 ease-in-out ${isExpanded ? 'scale-[1.25]' : 'scale-[1.8]'}`}>
                 <img
                     src="https://static.wixstatic.com/media/2ef790_8834bc46053541f9b07873cdb91f5649~mv2.png"
                     alt="DefScribe Pen"

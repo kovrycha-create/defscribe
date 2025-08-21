@@ -19,6 +19,8 @@ interface AnalyticsPanelProps {
   onSetHighlightedTopic: (topic: string | null) => void;
   statCardOrder: StatCardKey[];
   setStatCardOrder: (order: StatCardKey[]) => void;
+  isTourActive?: boolean;
+  currentTourStepId?: string;
 }
 
 type ActiveTab = 'summary' | 'actions' | 'snippets' | 'stats';
@@ -61,7 +63,7 @@ const TabButton: React.FC<{
   return (
     <button
       onClick={() => onClick(tab)}
-      className={`relative flex-1 text-center font-semibold px-4 py-2 transition-all duration-300 rounded-t-lg border border-b-0
+      className={`relative flex-1 text-center font-semibold px-2 py-4 text-sm md:text-base md:px-4 md:py-2 transition-all duration-300 rounded-t-lg border border-b-0
         ${
           isActive
             ? "bg-[rgba(var(--color-primary-rgb),0.3)] text-white border-[rgba(var(--color-primary-rgb),0.5)]" // Brighter, visible border
@@ -83,10 +85,19 @@ TabButton.displayName = 'TabButton';
 const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({ 
   isSummarizing, summary, summaryStyle, onSummarize, actionItems, 
   snippets, topics, isAnalyzing, speechAnalytics, speakerProfiles, transcriptEntries,
-  highlightedTopic, onSetHighlightedTopic, statCardOrder, setStatCardOrder
+  highlightedTopic, onSetHighlightedTopic, statCardOrder, setStatCardOrder,
+  isTourActive, currentTourStepId
 }) => {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('stats');
-  
+  const [localActiveTab, setLocalActiveTab] = useState<ActiveTab>('stats');
+
+  // If the tour is active and on the summary step, force the summary tab to be open.
+  // Otherwise, use the user-controlled tab state.
+  const activeTab = isTourActive && currentTourStepId === 'summary' ? 'summary' : localActiveTab;
+
+  const handleTabClick = (tab: ActiveTab) => {
+    setLocalActiveTab(tab);
+  };
+
   const hasEnoughContent = useMemo(() => {
     const totalWords = transcriptEntries.map(e => e.text).join(' ').split(/\s+/).filter(Boolean).length;
     return totalWords > 20;
@@ -144,13 +155,13 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
     };
 
   return (
-    <div className="flex flex-col h-full cosmo-panel md:rounded-2xl p-2 md:p-4 gap-4">
+    <div className="flex flex-col h-full cosmo-panel md:rounded-2xl p-2 md:p-4 gap-4 overflow-hidden">
       <header className="flex items-end justify-center z-10 -mx-2 md:-mx-4">
         <nav className="flex w-full px-2 md:px-4 border-b border-[rgba(var(--color-primary-rgb),0.5)]">
-            <TabButton name="Stats" tab="stats" activeTab={activeTab} onClick={setActiveTab} />
-            <TabButton name="Summary" tab="summary" activeTab={activeTab} onClick={setActiveTab} />
-            <TabButton name="Actions" tab="actions" activeTab={activeTab} onClick={setActiveTab} count={actionItems.length} />
-            <TabButton name="Snippets" tab="snippets" activeTab={activeTab} onClick={setActiveTab} count={snippets.length} />
+            <TabButton name="Stats" tab="stats" activeTab={activeTab} onClick={handleTabClick} />
+            <TabButton name="Summary" tab="summary" activeTab={activeTab} onClick={handleTabClick} />
+            <TabButton name="Actions" tab="actions" activeTab={activeTab} onClick={handleTabClick} count={actionItems.length} />
+            <TabButton name="Snippets" tab="snippets" activeTab={activeTab} onClick={handleTabClick} count={snippets.length} />
         </nav>
       </header>
       
@@ -166,7 +177,7 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
             {activeTab === 'summary' && (
             <div className="flex-1 flex flex-col min-h-0 z-10">
                 <TalkTimeVisualizer talkTimeData={speechAnalytics.talkTime || {}} speakerProfiles={speakerProfiles} />
-                <div className="flex gap-2 mb-3">
+                <div className="flex gap-2 mb-3" data-tour-id="summary-buttons">
                     <SummaryButton style="basic" current={summaryStyle} onClick={() => onSummarize('basic')}>Basic</SummaryButton>
                     <SummaryButton style="detailed" current={summaryStyle} onClick={() => onSummarize('detailed')}>Detailed</SummaryButton>
                     <SummaryButton style="full" current={summaryStyle} onClick={() => onSummarize('full')}>Full</SummaryButton>
