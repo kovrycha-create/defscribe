@@ -1,15 +1,16 @@
-
-
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { AudioContextManager } from '../utils/AudioContextManager';
 import { AUDIO_CONSTANTS } from '../constants/audio';
 import Tooltip from './Tooltip';
+import { type VisualizerBackground } from '../types';
 
 interface VisualizerProps {
   isListening: boolean;
   stream: MediaStream | null;
   themeColors: { primary: string; secondary: string; accent: string; };
   height: number;
+  background: VisualizerBackground;
+  setBackground: (bg: VisualizerBackground) => void;
 }
 
 type VisualizerStyle = 'wave' | 'bars' | 'nexus' | 'classic';
@@ -29,6 +30,211 @@ type Tendril = {
   maxLife: number;
   width: number;
 };
+type Star = {
+    x: number; y: number; z: number;
+    radius: number; color: string; twinkleSpeed: number; twinkleOffset: number;
+    isThemed: boolean;
+};
+
+// --- Background Components (copied from ImmersiveMode) ---
+const StarfieldBackground: React.FC<{ analyser: AnalyserNode | null; }> = React.memo(({ analyser }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        let stars: Star[] = [];
+        const numStars = 500;
+        
+        const setup = () => {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            
+            const rootStyle = getComputedStyle(document.documentElement);
+            const primaryRgb = rootStyle.getPropertyValue('--color-primary-rgb').trim();
+            const secondaryRgb = rootStyle.getPropertyValue('--color-secondary-rgb').trim();
+            const accentRgb = rootStyle.getPropertyValue('--color-accent-rgb').trim();
+            const themeRgbColors = [primaryRgb, secondaryRgb, accentRgb].filter(Boolean);
+
+            stars = [];
+            for (let i = 0; i < numStars; i++) {
+                let color = '255, 255, 255';
+                let radius = Math.random() * 1.5;
+                let isThemed = false;
+                
+                if (themeRgbColors.length > 0 && Math.random() < 0.05) { // 5% are themed
+                    color = themeRgbColors[Math.floor(Math.random() * themeRgbColors.length)];
+                    radius = Math.random() * 2 + 1;
+                    isThemed = true;
+                }
+
+                stars[i] = {
+                    x: Math.random() * canvas.width - canvas.width / 2,
+                    y: Math.random() * canvas.height - canvas.height / 2,
+                    z: Math.random() * canvas.width,
+                    radius,
+                    color,
+                    twinkleSpeed: Math.random() * 0.0005,
+                    twinkleOffset: Math.random() * Math.PI * 2,
+                    isThemed,
+                };
+            }
+        };
+        setup();
+
+        let animationFrameId: number;
+        const draw = () => {
+            let warpFactor = 0;
+            if (analyser) {
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(dataArray);
+                const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                warpFactor = (avg / 255) * 4;
+            }
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const primaryRgb = getComputedStyle(document.documentElement).getPropertyValue('--color-primary-rgb').trim() || '77, 138, 255';
+            const time = Date.now() * 0.0002;
+
+            ctx.fillStyle = `rgb(5, 8, 10)`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Stars
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+
+            for (let i = 0; i < numStars; i++) {
+                let star = stars[i];
+                star.z -= (0.2 + warpFactor);
+                if (star.z <= 0) {
+                    star.z = canvas.width;
+                }
+
+                let k = 128.0 / star.z;
+                let px = star.x * k;
+                let py = star.y * k;
+                let size = (1 - star.z / canvas.width) * star.radius * 2;
+                
+                const twinkle = 0.5 + Math.sin(star.twinkleOffset + Date.now() * star.twinkleSpeed) * 0.5;
+                const alpha = (1 - star.z / canvas.width) * twinkle;
+
+                if (star.isThemed) {
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = `rgba(${star.color}, 0.5)`;
+                }
+                
+                ctx.fillStyle = `rgba(${star.color}, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(px, py, size, 0, Math.PI * 2);
+                ctx.fill();
+
+                if (star.isThemed) {
+                    ctx.shadowBlur = 0;
+                }
+            }
+            ctx.restore();
+            animationFrameId = requestAnimationFrame(draw);
+        };
+        draw();
+        
+        window.addEventListener('resize', setup);
+        return () => {
+            cancelAnimationFrame(animationFrameId);
+            window.removeEventListener('resize', setup);
+        }
+    }, [analyser]);
+
+    return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-0" />;
+});
+
+const DigitalRainBackground: React.FC<{ analyser: AnalyserNode | null; themeColors: { primary: string; secondary: string; accent: string; }; }> = React.memo(({ analyser, themeColors }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const characters = 'アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズヅブプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッンABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        const fontSize = 16;
+        let columns: number;
+        let drops: number[];
+        
+        const setup = () => {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            columns = Math.floor(canvas.width / fontSize);
+            drops = Array(columns).fill(1).map(() => Math.random() * canvas.height);
+        };
+        setup();
+
+        let animationFrameId: number;
+        let lastFrameTime = 0;
+
+        const draw = (currentTime: number) => {
+            animationFrameId = requestAnimationFrame(draw);
+
+            let audioEnergy = 1.0;
+            if (analyser) {
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(dataArray);
+                const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+                const normalizedAvg = avg / 255.0; // 0 to 1
+                audioEnergy = 0.5 + normalizedAvg * 1.0; // Range 0.5 to 1.5 for smoother dynamics
+            }
+
+            const interval = 1000 / (20 * audioEnergy); // Base 20 FPS, scaled by audio
+            if (currentTime - lastFrameTime < interval) {
+                return;
+            }
+            lastFrameTime = currentTime;
+
+            ctx.fillStyle = 'rgba(5, 8, 10, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.font = `${fontSize}px monospace`;
+            
+            const colorPalette = [themeColors.primary, themeColors.secondary, themeColors.primary, themeColors.primary];
+
+            for (let i = 0; i < drops.length; i++) {
+                const text = characters.charAt(Math.floor(Math.random() * characters.length));
+                const yPos = drops[i] * fontSize;
+
+                if (Math.random() > 0.985) {
+                    ctx.fillStyle = themeColors.accent;
+                    ctx.shadowColor = themeColors.accent;
+                    ctx.shadowBlur = 10;
+                } else {
+                    ctx.fillStyle = colorPalette[i % colorPalette.length];
+                    ctx.shadowBlur = 0;
+                }
+                
+                ctx.fillText(text, i * fontSize, yPos);
+                
+                if (yPos > canvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            }
+            ctx.shadowBlur = 0;
+        };
+
+        draw(0);
+
+        window.addEventListener('resize', setup);
+        return () => {
+            cancelAnimationFrame(animationFrameId);
+            window.removeEventListener('resize', setup);
+        };
+    }, [analyser, themeColors]);
+
+    return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full z-0" />;
+});
+
 
 const SMALL_VISUALIZER_HEIGHT_THRESHOLD = 150;
 
@@ -52,14 +258,16 @@ const hexToRgbArray = (hex: string): [number, number, number] => {
 };
 
 
-const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColors, height }) => {
+const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColors, height, background, setBackground }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const animationFrameId = useRef<number | null>(null);
   const analyser = useRef<AnalyserNode | null>(null);
+  const backgroundAnalyser = useRef<AnalyserNode | null>(null);
   const dataArray = useRef<Uint8Array | null>(null);
   const frequencyArray = useRef<Uint8Array | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const backgroundSourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const idleTime = useRef(0);
   
   // Customization state
@@ -190,9 +398,8 @@ const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColor
     
     if (!currentAnalyser || !currentDataArray || !currentFrequencyArray || !canvas) return;
     
-  // Cast to the ArrayBuffer-backed form requested by some DOM lib overloads.
-  currentAnalyser.getByteTimeDomainData(currentDataArray as unknown as Uint8Array<ArrayBuffer>);
-  currentAnalyser.getByteFrequencyData(currentFrequencyArray as unknown as Uint8Array<ArrayBuffer>);
+    currentAnalyser.getByteTimeDomainData(currentDataArray);
+    currentAnalyser.getByteFrequencyData(currentFrequencyArray);
 
     const ctx = canvas.getContext('2d');
     const W = canvas.offsetWidth;
@@ -227,7 +434,9 @@ const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColor
 
   useEffect(() => {
     let contextAcquired = false;
+    let bgContextAcquired = false;
     if (isListening && stream) {
+        // Foreground analyser
         const audioContext = AudioContextManager.acquire('visualizer');
         contextAcquired = true;
 
@@ -236,10 +445,20 @@ const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColor
         sourceNodeRef.current = source;
         source.connect(analyser.current);
         
-  analyser.current.fftSize = AUDIO_CONSTANTS.FFT_SIZE;
-  analyser.current.smoothingTimeConstant = AUDIO_CONSTANTS.SMOOTHING_TIME_CONSTANT;
-  dataArray.current = new Uint8Array(analyser.current.fftSize);
-  frequencyArray.current = new Uint8Array(analyser.current.frequencyBinCount);
+        analyser.current.fftSize = AUDIO_CONSTANTS.FFT_SIZE;
+        analyser.current.smoothingTimeConstant = AUDIO_CONSTANTS.SMOOTHING_TIME_CONSTANT;
+        dataArray.current = new Uint8Array(analyser.current.fftSize);
+        frequencyArray.current = new Uint8Array(analyser.current.frequencyBinCount);
+        
+        // Background analyser
+        const bgAudioContext = AudioContextManager.acquire('visualizer-bg');
+        bgContextAcquired = true;
+        backgroundAnalyser.current = bgAudioContext.createAnalyser();
+        backgroundAnalyser.current.fftSize = 256;
+        backgroundAnalyser.current.smoothingTimeConstant = 0.8;
+        const bgSource = bgAudioContext.createMediaStreamSource(stream);
+        backgroundSourceNodeRef.current = bgSource;
+        bgSource.connect(backgroundAnalyser.current);
         
         barPeaks.current = [];
         classicBarPeaks.current = [];
@@ -259,6 +478,11 @@ const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColor
       if(sourceNodeRef.current) sourceNodeRef.current.disconnect();
       if(analyser.current) analyser.current.disconnect();
       if (contextAcquired) AudioContextManager.release('visualizer');
+
+      if(backgroundSourceNodeRef.current) backgroundSourceNodeRef.current.disconnect();
+      backgroundSourceNodeRef.current = null;
+      backgroundAnalyser.current = null;
+      if (bgContextAcquired) AudioContextManager.release('visualizer-bg');
     };
   }, [isListening, stream, draw, drawIdle]);
 
@@ -269,13 +493,21 @@ const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColor
         onMouseEnter={() => setShowControls(true)}
         onMouseLeave={() => setShowControls(false)}
     >
-      <canvas ref={canvasRef} className="w-full h-full" />
-      <div className={`absolute right-2 transition-transform duration-300 transform-gpu ${isSmall ? 'top-2 origin-top-right' : 'bottom-2 origin-bottom-right'} ${showControls ? 'scale-100 opacity-100' : 'scale-0 opacity-0 pointer-events-none'}`}>
-        <div className="bg-slate-900/80 backdrop-blur-md p-2 rounded-lg border border-slate-700/50 shadow-xl flex items-center gap-2">
+      <div className="absolute inset-0 w-full h-full z-0">
+        {background === 'starfield' && <StarfieldBackground analyser={backgroundAnalyser.current} />}
+        {background === 'digitalRain' && <DigitalRainBackground analyser={backgroundAnalyser.current} themeColors={themeColors} />}
+      </div>
+      <canvas ref={canvasRef} className="relative z-10 w-full h-full" />
+      <div className={`absolute right-2 transition-transform duration-300 transform-gpu z-20 ${isSmall ? 'top-2 origin-top-right' : 'bottom-2 origin-bottom-right'} ${showControls ? 'scale-100 opacity-100' : 'scale-0 opacity-0 pointer-events-none'}`}>
+        <div className="bg-slate-900/80 backdrop-blur-md p-2 rounded-lg border border-slate-700/50 shadow-xl flex items-center gap-2 flex-wrap justify-end">
           <ToggleIcon label="Wave" icon="fa-wave-square" enabled={activeStyles.wave} onChange={() => handleStyleToggle('wave')} />
           <ToggleIcon label="Bars" icon="fa-chart-bar" enabled={activeStyles.bars} onChange={() => handleStyleToggle('bars')} />
           <ToggleIcon label="Nexus" icon="fa-atom" enabled={activeStyles.nexus} onChange={() => handleStyleToggle('nexus')} />
           <ToggleIcon label="Classic" icon="fa-align-left fa-rotate-270" enabled={activeStyles.classic} onChange={() => handleStyleToggle('classic')} />
+          <div className="w-px h-8 bg-slate-700/50 mx-1" />
+          <ToggleIcon label="No Background" icon="fa-ban" enabled={background === 'none'} onChange={() => setBackground('none')} />
+          <ToggleIcon label="Starfield" icon="fa-star" enabled={background === 'starfield'} onChange={() => setBackground('starfield')} />
+          <ToggleIcon label="Digital Rain" icon="fa-code" enabled={background === 'digitalRain'} onChange={() => setBackground('digitalRain')} />
           <div className="w-px h-8 bg-slate-700/50 mx-1" />
           <div className="flex items-center gap-2 w-28">
               <Tooltip content="Sensitivity">

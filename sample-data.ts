@@ -1,4 +1,4 @@
-import { type TranscriptEntry, type SpeakerProfile, type SpeakerId, type ActionItem, type Snippet, type SpeechAnalytics, type SummaryStyle } from './types';
+import { type TranscriptEntry, type SpeakerProfile, type SpeakerId, type ActionItem, type Snippet, type SpeechAnalytics, type SummaryStyle, type GeneratedTitle } from './types';
 
 // 🔮 Astril Continuum Universe (ACU) flavored sample data for DefScribe guided tour
 // Drop-in replacement for the original placeholders.
@@ -141,4 +141,10 @@ export const SAMPLE_TOPICS: string[] = [
   'RiftSockets',
   'AHYBE Relay Quotas',
   'Convergence Demo',
+];
+
+export const SAMPLE_TITLES: GeneratedTitle[] = [
+    { id: 't1', text: 'HYRUM Sentinel: RiftSocket Integration' },
+    { id: 't2', text: 'Sync on Fluon Analytics & AHYBE Relays' },
+    { id: 't3', text: 'Project Convergence: Demo Deadline' },
 ];

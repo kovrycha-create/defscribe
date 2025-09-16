@@ -67,6 +67,7 @@ export interface SpeechAnalytics {
 }
 
 export type VisualizerStyle = 'wave' | 'bars' | 'circle';
+export type VisualizerBackground = 'none' | 'starfield' | 'digitalRain';
 
 // --- Diarization Types ---
 export type SpeakerId = string; // e.g. "S1", "S2"
@@ -100,3 +101,13 @@ export type StatCardKey =
   | 'vocabularyRichness'
   | 'questionCount'
   | 'avgSentenceLength';
+
+export interface ProactiveMessage {
+  id: number;
+  text: string;
+}
+
+export interface GeneratedTitle {
+  id: string;
+  text: string;
+}

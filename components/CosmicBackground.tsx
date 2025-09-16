@@ -122,7 +122,7 @@ const CosmicBackground: React.FC = () => {
         };
     }, []);
 
-    return <canvas ref={canvasRef} className="fixed inset-0 -z-20 w-full h-full" />;
+    return <canvas ref={canvasRef} className="fixed inset-0 z-[-1] w-full h-full pointer-events-none" />;
 };
 
 export default React.memo(CosmicBackground);

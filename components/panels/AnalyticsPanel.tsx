@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { type SummaryStyle, type ActionItem, type Snippet, type SpeakerProfile, type SpeakerId, type SpeechAnalytics, type TranscriptEntry, type StatCardKey } from '../../types';
+import { type SummaryStyle, type ActionItem, type Snippet, type SpeakerProfile, type SpeakerId, type SpeechAnalytics, type TranscriptEntry, type StatCardKey, type GeneratedTitle } from '../../types';
 import TalkTimeVisualizer from '../TalkTimeVisualizer';
 import AnalyticsItemLoader from '../AnalyticsItemLoader';
 
@@ -11,7 +11,11 @@ interface AnalyticsPanelProps {
   actionItems: ActionItem[];
   snippets: Snippet[];
   topics: string[];
+  titles: GeneratedTitle[];
   isAnalyzing: boolean;
+  isGeneratingTitles: boolean;
+  onGenerateTitles: () => void;
+  hasEnoughContent: boolean;
   speechAnalytics: Partial<SpeechAnalytics>;
   speakerProfiles: Record<SpeakerId, SpeakerProfile>;
   transcriptEntries: TranscriptEntry[];
@@ -63,7 +67,7 @@ const TabButton: React.FC<{
   return (
     <button
       onClick={() => onClick(tab)}
-      className={`relative flex-1 text-center font-semibold px-2 py-4 text-sm md:text-base md:px-4 md:py-2 transition-all duration-300 rounded-t-lg border border-b-0
+      className={`relative flex-1 text-center font-semibold px-2 py-4 text-sm md:px-3 md:py-2 transition-all duration-300 rounded-t-lg border border-b-0
         ${
           isActive
             ? "bg-[rgba(var(--color-primary-rgb),0.3)] text-white border-[rgba(var(--color-primary-rgb),0.5)]" // Brighter, visible border
@@ -84,11 +88,13 @@ TabButton.displayName = 'TabButton';
 
 const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({ 
   isSummarizing, summary, summaryStyle, onSummarize, actionItems, 
-  snippets, topics, isAnalyzing, speechAnalytics, speakerProfiles, transcriptEntries,
+  snippets, topics, titles, isAnalyzing, isGeneratingTitles, onGenerateTitles, hasEnoughContent,
+  speechAnalytics, speakerProfiles, transcriptEntries,
   highlightedTopic, onSetHighlightedTopic, statCardOrder, setStatCardOrder,
   isTourActive, currentTourStepId
 }) => {
   const [localActiveTab, setLocalActiveTab] = useState<ActiveTab>('stats');
+  const [copiedTitleId, setCopiedTitleId] = useState<string | null>(null);
 
   // If the tour is active and on the summary step, force the summary tab to be open.
   // Otherwise, use the user-controlled tab state.
@@ -98,7 +104,7 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
     setLocalActiveTab(tab);
   };
 
-  const hasEnoughContent = useMemo(() => {
+  const hasEnoughContentForAnalytics = useMemo(() => {
     const totalWords = transcriptEntries.map(e => e.text).join(' ').split(/\s+/).filter(Boolean).length;
     return totalWords > 20;
   }, [transcriptEntries]);
@@ -142,6 +148,12 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
         setDragOverItem(null);
     };
     
+    const handleCopyTitle = (title: GeneratedTitle) => {
+        navigator.clipboard.writeText(title.text);
+        setCopiedTitleId(title.id);
+        setTimeout(() => setCopiedTitleId(null), 2000);
+    }
+    
     const allStats: Record<StatCardKey, { icon: string; label: string; value: string | number; unit?: string; }> = {
         wpm: { icon: "fa-tachometer-alt", label: "Avg. Speed", value: speechAnalytics.wpm?.toFixed(0) || 0, unit: "WPM" },
         duration: { icon: "fa-stopwatch", label: "Duration", value: speechAnalytics.duration ? new Date(speechAnalytics.duration * 1000).toISOString().substr(14, 5) : '00:00', unit: "MM:SS" },
@@ -166,7 +178,7 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
       </header>
       
       {!hasAnyAnalytics && !isAnalyzing ? (
-          <EmptyState text={hasEnoughContent ? "No analytics available." : "Not enough content to generate analytics."} />
+          <EmptyState text={hasEnoughContentForAnalytics ? "No analytics available." : "Not enough content to generate analytics."} />
       ) : isAnalyzing && activeTab !== 'stats' ? (
         <div className="flex-1 flex flex-col items-center justify-center text-slate-400 z-10">
             <i className="fas fa-brain text-4xl mb-3 spinner-animation"></i>
@@ -176,39 +188,62 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
         <>
             {activeTab === 'summary' && (
             <div className="flex-1 flex flex-col min-h-0 z-10">
-                <TalkTimeVisualizer talkTimeData={speechAnalytics.talkTime || {}} speakerProfiles={speakerProfiles} />
-                <div className="flex gap-2 mb-3" data-tour-id="summary-buttons">
-                    <SummaryButton style="basic" current={summaryStyle} onClick={() => onSummarize('basic')}>Basic</SummaryButton>
-                    <SummaryButton style="detailed" current={summaryStyle} onClick={() => onSummarize('detailed')}>Detailed</SummaryButton>
-                    <SummaryButton style="full" current={summaryStyle} onClick={() => onSummarize('full')}>Full</SummaryButton>
-                </div>
-                {isSummarizing ? (
-                    <AnalyticsItemLoader />
-                ) : (
-                    <div className="flex-1 overflow-y-auto bg-slate-900/50 rounded-lg p-4 prose prose-sm prose-invert max-w-none prose-p:text-slate-300">
-                        <p style={{ whiteSpace: 'pre-wrap' }}>{summary}</p>
+                <div className="flex-1 flex flex-col min-h-0">
+                    <TalkTimeVisualizer talkTimeData={speechAnalytics.talkTime || {}} speakerProfiles={speakerProfiles} />
+                    <div className="flex gap-2 mb-3" data-tour-id="summary-buttons">
+                        <SummaryButton style="basic" current={summaryStyle} onClick={() => onSummarize('basic')}>Basic</SummaryButton>
+                        <SummaryButton style="detailed" current={summaryStyle} onClick={() => onSummarize('detailed')}>Detailed</SummaryButton>
+                        <SummaryButton style="full" current={summaryStyle} onClick={() => onSummarize('full')}>Full</SummaryButton>
                     </div>
-                )}
-                {(topics || []).length > 0 && (
-                    <div className="pt-3 mt-3 border-t border-[rgba(var(--color-primary-rgb),0.2)]">
-                        <h3 className="text-xs font-semibold text-slate-400 uppercase mb-2">Topics</h3>
-                        <div className="flex flex-wrap gap-2">
-                            {topics.map(topic => (
-                                <button 
-                                    key={topic} 
-                                    onClick={() => onSetHighlightedTopic(topic === highlightedTopic ? null : topic)}
-                                    className={`px-2 py-1 text-xs rounded-full transition-colors duration-200 
-                                        ${highlightedTopic === topic 
-                                            ? 'bg-[var(--color-accent)] text-black font-bold shadow-[0_0_8px_rgba(var(--color-accent-rgb),0.7)]' 
-                                            : 'bg-[var(--color-accent)]/20 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/40'
-                                        }`}
-                                >
-                                    {topic}
-                                </button>
-                            ))}
+                    {isSummarizing ? (
+                        <AnalyticsItemLoader />
+                    ) : (
+                        <div className="flex-1 overflow-y-auto bg-slate-900/50 rounded-lg p-4 prose prose-sm prose-invert max-w-none prose-p:text-slate-300">
+                            <p style={{ whiteSpace: 'pre-wrap' }}>{summary}</p>
                         </div>
-                    </div>
-                )}
+                    )}
+                    {(topics || []).length > 0 && (
+                        <div className="pt-3 mt-3 border-t border-[rgba(var(--color-primary-rgb),0.2)]">
+                            <h3 className="text-xs font-semibold text-slate-400 uppercase mb-2">Topics</h3>
+                            <div className="flex flex-wrap gap-2">
+                                {topics.map(topic => (
+                                    <button 
+                                        key={topic} 
+                                        onClick={() => onSetHighlightedTopic(topic === highlightedTopic ? null : topic)}
+                                        className={`px-2 py-1 text-xs rounded-full transition-colors duration-200 
+                                            ${highlightedTopic === topic 
+                                                ? 'bg-[var(--color-accent)] text-black font-bold shadow-[0_0_8px_rgba(var(--color-accent-rgb),0.7)]' 
+                                                : 'bg-[var(--color-accent)]/20 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/40'
+                                            }`}
+                                    >
+                                        {topic}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+                <div className="pt-3 mt-auto">
+                    <button onClick={onGenerateTitles} disabled={isGeneratingTitles || !hasEnoughContent} className="cosmo-button w-full h-10 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                        {isGeneratingTitles ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-magic"></i>}
+                        <span>{isGeneratingTitles ? 'Generating...' : 'Suggest Titles'}</span>
+                    </button>
+                    {titles.length > 0 && (
+                        <div className="mt-3 space-y-2 animate-[fadeIn_0.3s_ease-out]">
+                        <h4 className="text-xs font-semibold text-slate-400 uppercase">Suggestions:</h4>
+                        {titles.map(title => (
+                            <button key={title.id} onClick={() => handleCopyTitle(title)} className="w-full text-left text-sm p-2 rounded-md bg-slate-800/50 hover:bg-slate-700/50 transition-colors flex justify-between items-center group">
+                            <span className="flex-1 pr-2">{title.text}</span>
+                            {copiedTitleId === title.id ? (
+                                <span className="text-green-400 text-xs font-bold">Copied!</span>
+                            ) : (
+                                <i className="fas fa-copy text-slate-500 group-hover:text-slate-300 transition-colors"></i>
+                            )}
+                            </button>
+                        ))}
+                        </div>
+                    )}
+                </div>
             </div>
             )}
             

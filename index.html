@@ -665,6 +665,77 @@
       .tour-overlay-path {
         transition: d 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       }
+      
+      /* Resizer Styles */
+      .vertical-resizer {
+        flex-shrink: 0;
+        width: 12px;
+        cursor: col-resize;
+        background-color: transparent;
+        position: relative;
+        transition: background-color 0.2s ease;
+      }
+
+      .vertical-resizer::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 2px;
+        height: 50px;
+        background-color: rgba(var(--color-primary-rgb), 0.3);
+        border-radius: 2px;
+        transition: all 0.2s ease;
+      }
+
+      .vertical-resizer:hover::before {
+        width: 4px;
+        background-color: rgba(var(--color-primary-rgb), 0.7);
+        box-shadow: 0 0 10px rgba(var(--color-primary-rgb), 0.5);
+      }
+
+      body.resizing-panels {
+        cursor: col-resize;
+        user-select: none;
+      }
+      
+      /* Collapsed Panel styles */
+      .collapsed-panel-tab {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        cursor: pointer;
+        gap: 1rem;
+        padding: 1rem 0;
+        transition: all 0.2s ease;
+        border: 1px solid rgba(var(--color-primary-rgb), 0.2);
+        border-radius: 1rem;
+        background: rgba(var(--color-primary-rgb), 0.05);
+      }
+
+      .collapsed-panel-tab:hover {
+        background-color: rgba(var(--color-primary-rgb), 0.15);
+        border-color: rgba(var(--color-primary-rgb), 0.4);
+        box-shadow: 0 0 15px rgba(var(--color-primary-rgb), 0.3);
+      }
+
+      .collapsed-panel-tab .collapsed-text {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+      }
+
+      .collapsed-panel-tab .collapsed-icon {
+        font-size: 1.5rem;
+        color: var(--color-primary);
+      }
     </style>
   <script type="importmap">
 {

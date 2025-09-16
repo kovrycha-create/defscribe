@@ -25,5 +25,5 @@ declare module '@google/genai' {
     };
   }
 
-  export { GoogleGenAI, Type, GenerateContentResponse };
+  // FIX: Removed redundant export statement that caused "Export declaration conflicts" errors.
 }

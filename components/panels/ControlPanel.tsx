@@ -50,6 +50,8 @@ interface ControlPanelProps {
   isSettingsCollapsed: boolean;
   setIsSettingsCollapsed: (collapsed: boolean) => void;
   isTourActive: boolean;
+  onWwyd: (e: React.MouseEvent) => void;
+  isWwydLoading: boolean;
 }
 
 const IconButton: React.FC<{
@@ -60,10 +62,11 @@ const IconButton: React.FC<{
   disabled?: boolean;
   size?: 'normal' | 'large';
   "data-tour-id"?: string;
-}> = ({ icon, text, onClick, className = '', disabled, size = 'normal', "data-tour-id": dataTourId }) => {
+  textSizeClass?: string;
+}> = ({ icon, text, onClick, className = '', disabled, size = 'normal', "data-tour-id": dataTourId, textSizeClass }) => {
   const isLarge = size === 'large';
   const heightClass = isLarge ? 'h-14' : 'h-10';
-  const textClass = isLarge ? 'text-xl' : 'text-lg';
+  const textClass = isLarge ? 'text-xl' : (textSizeClass || 'text-sm');
   const iconSizeClass = isLarge ? 'text-xl' : 'text-lg';
   const gapClass = isLarge ? 'gap-4' : 'gap-3';
 
@@ -79,7 +82,7 @@ const IconButton: React.FC<{
     <button
       onClick={handleClick}
       disabled={disabled}
-      className={`${heightClass} w-full flex items-center justify-center ${textClass} font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg ${className}`}
+      className={`${heightClass} flex items-center justify-center ${textClass} font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg ${className}`}
       data-tour-id={dataTourId}
     >
       {isLarge ? (
@@ -132,13 +135,13 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
   themeId, setThemeId, customThemeColors, setCustomThemeColors, diarizationSettings, setDiarizationSettings,
   translationLanguage, setTranslationLanguage, spokenLanguage, setSpokenLanguage, 
   liveTranslationEnabled, setLiveTranslationEnabled, isMobileView, isTrueMobile,
-  onExport, sessionActive, hasContent, shortcuts, setViewModeOverride, isSettingsCollapsed, setIsSettingsCollapsed, isTourActive } = props;
+  onExport, sessionActive, hasContent, shortcuts, setViewModeOverride, isSettingsCollapsed, setIsSettingsCollapsed, isTourActive, onWwyd, isWwydLoading } = props;
   
   const [isCustomThemeOpen, setIsCustomThemeOpen] = useState(false);
   const [changedColors, setChangedColors] = useState<Set<string>>(new Set());
   const [isExportButtonFlashing, setIsExportButtonFlashing] = useState(false);
 
-  const languageOptions = ["Spanish", "French", "German", "Japanese", "Mandarin"];
+  const languageOptions = ["English", "Spanish", "French", "German", "Japanese", "Mandarin"];
   const spokenLanguageOptions = Object.keys(SPOKEN_LANGUAGES);
   const selectedSpokenLanguageName = SPOKEN_LANGUAGES_REVERSE[spokenLanguage] || 'English (US)';
   
@@ -241,9 +244,9 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
 
       <div className="space-y-2" data-tour-id="start-button">
         {isListening ? (
-          <IconButton icon="fa-stop-circle" text="Stop Listening" onClick={handleStopClick} disabled={isTourActive} className="bg-red-500/80 text-white hover:bg-red-500/100 animate-[recording-glow_2s_ease-in-out_infinite]" size="large" />
+          <IconButton icon="fa-stop-circle" text="Stop Listening" onClick={handleStopClick} disabled={isTourActive} className="bg-red-500/80 text-white hover:bg-red-500/100 animate-[recording-glow_2s_ease-in-out_infinite] w-full" size="large" />
         ) : (
-          <IconButton icon="fa-microphone-alt" text="Start Listening" onClick={onStart} disabled={isTourActive} className={`bg-green-500/80 text-white hover:bg-green-500/100 ${isStartButtonGlowing ? 'animate-start-button-glow' : ''}`} size="large" />
+          <IconButton icon="fa-microphone-alt" text="Start Listening" onClick={onStart} disabled={isTourActive} className={`bg-green-500/80 text-white hover:bg-green-500/100 ${isStartButtonGlowing ? 'animate-start-button-glow' : ''} w-full`} size="large" />
         )}
       </div>
 
@@ -252,7 +255,7 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
       </div>
       
       {/* Settings Section */}
-      <div className="transition-all duration-500 ease-in-out overflow-hidden" style={{ maxHeight: isSettingsCollapsed ? '56px' : '500px' }}>
+      <div className="transition-all duration-500 ease-in-out overflow-hidden" style={{ maxHeight: isSettingsCollapsed ? '56px' : '850px' }}>
         <div className="py-1">
           <div className="p-1" data-tour-id="settings-toggle">
             <button 
@@ -354,40 +357,62 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                 </Tooltip>
             </div>
             {isCustomThemeOpen && themeId === 8 && (
-                <div className="mt-3 space-y-2 p-3 bg-slate-900/50 rounded-lg animate-[fadeIn_0.2s_ease-out]">
-                    <div className="flex items-center gap-2">
-                        <input type="color" value={customThemeColors.primary} onChange={(e) => handleColorChange('primary', e.target.value)} className="w-8 h-8 p-0 border-none rounded-md bg-transparent cursor-pointer" />
-                        <label className="text-xs flex-1">Primary</label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <input type="color" value={customThemeColors.secondary} onChange={(e) => handleColorChange('secondary', e.target.value)} className="w-8 h-8 p-0 border-none rounded-md bg-transparent cursor-pointer"/>
-                        <label className="text-xs flex-1">Secondary</label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <input type="color" value={customThemeColors.accent} onChange={(e) => handleColorChange('accent', e.target.value)} className="w-8 h-8 p-0 border-none rounded-md bg-transparent cursor-pointer"/>
-                        <label className="text-xs flex-1">Accent</label>
-                    </div>
+              <div className="mt-3 p-3 bg-slate-900/50 rounded-lg animate-[fadeIn_0.2s_ease-out]">
+                <div className="flex items-start justify-around text-center">
+                  <div className="flex flex-col items-center gap-1">
+                    <input
+                      type="color"
+                      value={customThemeColors.primary}
+                      onChange={(e) => handleColorChange('primary', e.target.value)}
+                      className="w-8 h-8 p-0 border-none rounded-md bg-transparent cursor-pointer"
+                      aria-label="Primary color"
+                    />
+                    <label className="text-xs">Primary</label>
+                  </div>
+                  <div className="flex flex-col items-center gap-1">
+                    <input
+                      type="color"
+                      value={customThemeColors.secondary}
+                      onChange={(e) => handleColorChange('secondary', e.target.value)}
+                      className="w-8 h-8 p-0 border-none rounded-md bg-transparent cursor-pointer"
+                      aria-label="Secondary color"
+                    />
+                    <label className="text-xs">Secondary</label>
+                  </div>
+                  <div className="flex flex-col items-center gap-1">
+                    <input
+                      type="color"
+                      value={customThemeColors.accent}
+                      onChange={(e) => handleColorChange('accent', e.target.value)}
+                      className="w-8 h-8 p-0 border-none rounded-md bg-transparent cursor-pointer"
+                      aria-label="Accent color"
+                    />
+                    <label className="text-xs">Accent</label>
+                  </div>
                 </div>
+              </div>
             )}
           </div>
         </div>
       </div>
       
-      <div className="pt-4 mt-auto space-y-2">
+      <div className="pt-4 mt-auto flex items-center gap-2">
         <IconButton
             icon="fa-file-export"
             text="Export & Share"
             onClick={onExport}
             disabled={isListening || !hasContent || isTourActive}
-            className={`cosmo-button ${isExportButtonFlashing ? 'animate-flash-effect' : ''}`}
+            className={`cosmo-button flex-1 ${isExportButtonFlashing ? 'animate-flash-effect' : ''}`}
             data-tour-id="export-button"
+            textSizeClass="text-sm"
         />
         <IconButton
             icon="fa-trash-alt"
-            text="Clear Session"
+            text="Clear"
             onClick={handleClearWithConfirmation}
             disabled={isListening || !hasContent || isTourActive}
-            className="bg-red-500/20 text-red-400 hover:bg-red-500/40 hover:text-red-300 border border-red-500/30"
+            className="bg-red-500/20 text-red-400 hover:bg-red-500/40 hover:text-red-300 border border-red-500/30 flex-1"
+            textSizeClass="text-lg"
         />
       </div>
 
@@ -404,6 +429,11 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
             {!isTrueMobile && (
               <ViewSwitcher isMobileView={isMobileView} setViewModeOverride={setViewModeOverride} />
             )}
+            <Tooltip content={<div className="text-center p-1"><div>What Would Ymzo Do?</div><div className="text-xs text-slate-400 mt-1">Alt+Click for walltalk<br/>Ctrl+Click for time</div></div>} contentClassName="w-max">
+              <button onClick={onWwyd} disabled={isWwydLoading || isTourActive} className="h-8 w-8 cosmo-button rounded-full flex items-center justify-center text-lg text-amber-300 disabled:opacity-50 disabled:cursor-wait">
+                {isWwydLoading ? <i className="fas fa-spinner fa-spin text-sm"></i> : <i className="fas fa-wand-magic-sparkles"></i>}
+              </button>
+            </Tooltip>
             <Tooltip content="Go Immersive">
               <button data-tour-id="immersive-button" onClick={onGoImmersive} className={`h-8 w-8 cosmo-button rounded-full flex items-center justify-center text-lg ${isImmersiveButtonGlowing ? 'animate-[gold-pulse_2s_ease-in-out_infinite]' : ''}`}>
                   <i className="fas fa-meteor"></i>

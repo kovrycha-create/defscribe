@@ -3,290 +3,222 @@ import { type DiarizationSettings, type DiarizationSegment, type SpeakerId } fro
 import { AudioContextManager } from '../utils/AudioContextManager';
 import { AUDIO_CONSTANTS } from '../constants/audio';
 
+// Revamped interfaces for the new diarization model
 interface AudioFeatures {
   energy: number;
-  pitch: number;
-  spectralCentroid: number;
+  spectralFingerprint: number[]; // Vector of normalized energies in each SPECTRAL_BAND
   timestamp: number;
 }
 
 interface SpeakerModel {
   id: SpeakerId;
-  features: AudioFeatures[];
-  avgEnergy: number;
-  avgPitch: number;
-  avgSpectralCentroid: number;
-  lastSeen: number;
+  featureCentroid: number[]; // The Exponential Moving Average (EMA) of spectral fingerprints for this speaker
 }
+
+// --- Vector Math Helpers ---
+const dotProduct = (vecA: number[], vecB: number[]) => vecA.reduce((sum, val, i) => sum + val * vecB[i], 0);
+const magnitude = (vec: number[]) => Math.sqrt(vec.reduce((sum, val) => sum + val * val, 0));
+const cosineSimilarity = (vecA: number[], vecB: number[]) => {
+  const magA = magnitude(vecA);
+  const magB = magnitude(vecB);
+  if (magA === 0 || magB === 0) return 0;
+  return dotProduct(vecA, vecB) / (magA * magB);
+};
 
 const useDiarization = (
   stream: MediaStream | null,
   settings: DiarizationSettings,
   startTime: number | null
 ) => {
-  const [activeSpeaker, setActiveSpeaker] = useState<SpeakerId | null>(null);
   const [segments, setSegments] = useState<DiarizationSegment[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // FIX: Use useState for activeSpeaker to make it reactive for UI updates.
+  const [activeSpeaker, setActiveSpeaker] = useState<SpeakerId | null>(null);
 
+  // Refs for audio processing
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const dataArrayRef = useRef<Uint8Array | null>(null);
-  const freqArrayRef = useRef<Uint8Array | null>(null);
   const animationFrameIdRef = useRef<number | null>(null);
+  const sampleRateRef = useRef<number>(0);
   
+  // Refs for diarization state
   const speakerModelsRef = useRef<Map<SpeakerId, SpeakerModel>>(new Map());
   const currentSegmentRef = useRef<DiarizationSegment | null>(null);
-  const silenceCountRef = useRef(0);
+  const silenceFramesRef = useRef(0);
   const featureBufferRef = useRef<AudioFeatures[]>([]);
   
-  const {
-    SILENCE_THRESHOLD,
-    SILENCE_DURATION_MS,
-    FEATURE_WINDOW_SIZE,
-    SPEAKER_CHANGE_THRESHOLD,
-    MIN_SEGMENT_DURATION_MS
+  const { 
+      SPECTRAL_BANDS, FFT_SIZE, SPEAKER_SIMILARITY_THRESHOLD, SILENCE_THRESHOLD, 
+      FEATURE_WINDOW_SIZE, SPEAKER_MODEL_UPDATE_ALPHA, MIN_SEGMENT_DURATION_MS, SILENCE_DURATION_MS 
   } = AUDIO_CONSTANTS;
 
-  const calculateFeatures = useCallback((timeData: Uint8Array, freqData: Uint8Array, sampleRate: number): AudioFeatures => {
-    const samples = new Float32Array(timeData.length);
-    for (let i = 0; i < timeData.length; i++) {
-      samples[i] = (timeData[i] - 128) / 128;
-    }
-
-    let sum = 0;
-    for (let i = 0; i < samples.length; i++) {
-      sum += samples[i] * samples[i];
-    }
-    const energy = Math.sqrt(sum / samples.length);
-
-    let zeroCrossings = 0;
-    for (let i = 1; i < samples.length; i++) {
-      if ((samples[i] >= 0) !== (samples[i - 1] >= 0)) {
-        zeroCrossings++;
-      }
-    }
-    const pitch = (zeroCrossings * sampleRate) / (2 * samples.length);
-
-    let weightedSum = 0;
-    let magnitudeSum = 0;
-    for (let i = 0; i < freqData.length; i++) {
-      const magnitude = freqData[i];
-      const freq = (i * sampleRate) / (AUDIO_CONSTANTS.FFT_SIZE);
-      weightedSum += magnitude * freq;
-      magnitudeSum += magnitude;
-    }
-    const spectralCentroid = magnitudeSum > 0 ? (weightedSum / magnitudeSum) : 0;
-
-    return {
-      energy,
-      pitch,
-      spectralCentroid,
-      timestamp: Date.now()
-    };
-  }, []);
-
-  const calculateSimilarity = useCallback((features1: AudioFeatures[], features2: AudioFeatures[]): number => {
-    if (features1.length === 0 || features2.length === 0) return 0;
-
-    const avg1 = {
-      energy: features1.reduce((sum, f) => sum + f.energy, 0) / features1.length,
-      pitch: features1.reduce((sum, f) => sum + f.pitch, 0) / features1.length,
-      spectralCentroid: features1.reduce((sum, f) => sum + f.spectralCentroid, 0) / features1.length
-    };
-
-    const avg2 = {
-      energy: features2.reduce((sum, f) => sum + f.energy, 0) / features2.length,
-      pitch: features2.reduce((sum, f) => sum + f.pitch, 0) / features2.length,
-      spectralCentroid: features2.reduce((sum, f) => sum + f.spectralCentroid, 0) / features2.length
-    };
-
-    const NORM_EPSILON = 0.1; // Add epsilon to prevent division by zero or small numbers
-
-    const energyDiff = Math.abs(avg1.energy - avg2.energy) / (Math.max(avg1.energy, avg2.energy) + NORM_EPSILON);
-    const pitchDiff = Math.abs(avg1.pitch - avg2.pitch) / (Math.max(avg1.pitch, avg2.pitch) + NORM_EPSILON);
-    const spectralDiff = Math.abs(avg1.spectralCentroid - avg2.spectralCentroid) / (Math.max(avg1.spectralCentroid, avg2.spectralCentroid) + NORM_EPSILON);
-
-    // Re-weighted to prioritize pitch more, as it's a key differentiator of voices
-    const distance = (energyDiff * 0.2) + (pitchDiff * 0.5) + (spectralDiff * 0.3);
-    
-    return Math.max(0, 1 - distance);
-  }, []);
-
-  const detectSpeaker = useCallback((currentFeatures: AudioFeatures[]): SpeakerId => {
-    const models = speakerModelsRef.current;
-    
-    if (models.size === 0 || models.size < settings.expectedSpeakers) {
-      const newSpeakerId = `S${models.size + 1}` as SpeakerId;
-      const newModel: SpeakerModel = {
-        id: newSpeakerId,
-        features: [...currentFeatures],
-        avgEnergy: currentFeatures.reduce((sum, f) => sum + f.energy, 0) / currentFeatures.length,
-        avgPitch: currentFeatures.reduce((sum, f) => sum + f.pitch, 0) / currentFeatures.length,
-        avgSpectralCentroid: currentFeatures.reduce((sum, f) => sum + f.spectralCentroid, 0) / currentFeatures.length,
-        lastSeen: Date.now()
-      };
-      models.set(newSpeakerId, newModel);
-      return newSpeakerId;
-    }
-
-    let bestMatch: SpeakerId | null = null;
-    let bestSimilarity = 0;
-
-    models.forEach((model) => {
-      const similarity = calculateSimilarity(currentFeatures, model.features.slice(-FEATURE_WINDOW_SIZE));
-      if (similarity > bestSimilarity) {
-        bestSimilarity = similarity;
-        bestMatch = model.id;
-      }
-    });
-
-    if (bestSimilarity < (1 - SPEAKER_CHANGE_THRESHOLD) && models.size < settings.expectedSpeakers) {
-      const newSpeakerId = `S${models.size + 1}` as SpeakerId;
-      const newModel: SpeakerModel = {
-        id: newSpeakerId,
-        features: [...currentFeatures],
-        avgEnergy: currentFeatures.reduce((sum, f) => sum + f.energy, 0) / currentFeatures.length,
-        avgPitch: currentFeatures.reduce((sum, f) => sum + f.pitch, 0) / currentFeatures.length,
-        avgSpectralCentroid: currentFeatures.reduce((sum, f) => sum + f.spectralCentroid, 0) / currentFeatures.length,
-        lastSeen: Date.now()
-      };
-      models.set(newSpeakerId, newModel);
-      return newSpeakerId;
-    }
-
-    if (bestMatch) {
-      const model = models.get(bestMatch)!;
-      model.features = [...model.features.slice(-FEATURE_WINDOW_SIZE), ...currentFeatures];
-      model.lastSeen = Date.now();
+  const calculateFeatures = useCallback((freqData: Uint8Array, sampleRate: number): Omit<AudioFeatures, 'timestamp'> => {
+      // Overall energy (RMS of magnitudes)
+      const energy = Math.sqrt(freqData.reduce((sum, val) => sum + val * val, 0) / freqData.length) / 255;
       
-      const allFeatures = model.features;
-      model.avgEnergy = allFeatures.reduce((sum, f) => sum + f.energy, 0) / allFeatures.length;
-      model.avgPitch = allFeatures.reduce((sum, f) => sum + f.pitch, 0) / allFeatures.length;
-      model.avgSpectralCentroid = allFeatures.reduce((sum, f) => sum + f.spectralCentroid, 0) / allFeatures.length;
-    }
+      const spectralFingerprint = new Array(SPECTRAL_BANDS.length).fill(0);
+      let totalMagnitude = 0;
+      const freqBinWidth = sampleRate / FFT_SIZE;
 
-    return bestMatch || 'S1' as SpeakerId;
-  }, [calculateSimilarity, settings.expectedSpeakers]);
+      for (let i = 0; i < freqData.length; i++) {
+        const freq = i * freqBinWidth;
+        const magnitude = freqData[i];
+        if (magnitude === 0) continue;
+        totalMagnitude += magnitude;
+
+        for (let j = 0; j < SPECTRAL_BANDS.length; j++) {
+            if (freq >= SPECTRAL_BANDS[j].range[0] && freq < SPECTRAL_BANDS[j].range[1]) {
+                spectralFingerprint[j] += magnitude;
+                break;
+            }
+        }
+      }
+
+      // Normalize the fingerprint vector to make it independent of volume
+      if (totalMagnitude > 0) {
+        for (let i = 0; i < spectralFingerprint.length; i++) {
+            spectralFingerprint[i] /= totalMagnitude;
+        }
+      }
+
+      return { energy, spectralFingerprint };
+  }, [SPECTRAL_BANDS, FFT_SIZE]);
+
+  const detectSpeaker = useCallback((fingerprint: number[]): SpeakerId => {
+      const models = speakerModelsRef.current;
+      if (models.size === 0 && settings.expectedSpeakers > 0) {
+          const newId = 'S1' as SpeakerId;
+          models.set(newId, { id: newId, featureCentroid: fingerprint });
+          return newId;
+      }
+
+      let bestMatch: SpeakerId | null = null;
+      let bestSimilarity = -1;
+
+      models.forEach((model, id) => {
+          const similarity = cosineSimilarity(fingerprint, model.featureCentroid);
+          if (similarity > bestSimilarity) {
+              bestSimilarity = similarity;
+              bestMatch = id;
+          }
+      });
+
+      if (bestMatch && bestSimilarity >= SPEAKER_SIMILARITY_THRESHOLD) {
+          // Update the matched model using an Exponential Moving Average (EMA)
+          const model = models.get(bestMatch)!;
+          const alpha = SPEAKER_MODEL_UPDATE_ALPHA;
+          model.featureCentroid = model.featureCentroid.map((val, i) => (1 - alpha) * val + alpha * fingerprint[i]);
+          return bestMatch;
+      }
+      
+      if (models.size < settings.expectedSpeakers) {
+          const newId = `S${models.size + 1}` as SpeakerId;
+          models.set(newId, { id: newId, featureCentroid: fingerprint });
+          return newId;
+      }
+      
+      return bestMatch || `S${models.size || 1}`; // Fallback to the closest match
+  }, [settings.expectedSpeakers, SPEAKER_SIMILARITY_THRESHOLD, SPEAKER_MODEL_UPDATE_ALPHA]);
 
   const endCurrentSegment = useCallback((endTime: number) => {
     if (currentSegmentRef.current) {
-      const segment = currentSegmentRef.current;
-      segment.endMs = endTime;
-      
-      if (segment.endMs - segment.startMs >= MIN_SEGMENT_DURATION_MS) {
-        setSegments(prev => [...prev, segment]);
-      }
-      
-      currentSegmentRef.current = null;
-      setActiveSpeaker(null);
+        const segment = { ...currentSegmentRef.current, endMs: endTime };
+        if (segment.endMs - segment.startMs >= MIN_SEGMENT_DURATION_MS) {
+            setSegments(prev => [...prev, segment]);
+        }
     }
-  }, []);
+    currentSegmentRef.current = null;
+    setActiveSpeaker(null);
+  }, [MIN_SEGMENT_DURATION_MS]);
 
   const processAudioFrame = useCallback(() => {
-    if (!analyserRef.current || !dataArrayRef.current || !freqArrayRef.current || !startTime) {
-      if (settings.enabled) {
-        animationFrameIdRef.current = requestAnimationFrame(processAudioFrame);
-      }
+    const analyser = analyserRef.current;
+    if (!analyser || !startTime || !sampleRateRef.current) {
+      if (settings.enabled) animationFrameIdRef.current = requestAnimationFrame(processAudioFrame);
       return;
     }
 
-    analyserRef.current.getByteTimeDomainData(dataArrayRef.current as any);
-    analyserRef.current.getByteFrequencyData(freqArrayRef.current as any);
-    const audioContext = AudioContextManager.acquire('diarization');
-    const sampleRate = audioContext.sampleRate;
-    AudioContextManager.release('diarization');
+    const freqArray = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(freqArray);
     
-    const currentTime = Date.now() - startTime;
-    const features = calculateFeatures(dataArrayRef.current, freqArrayRef.current, sampleRate);
+    const { energy, spectralFingerprint } = calculateFeatures(freqArray, sampleRateRef.current);
+    const currentTimeMs = Date.now() - startTime;
 
-    if (features.energy < SILENCE_THRESHOLD) {
-      silenceCountRef.current++;
-      const silenceDuration = (silenceCountRef.current * (dataArrayRef.current.length / sampleRate)) * 1000;
-      
-      if (silenceDuration > SILENCE_DURATION_MS && currentSegmentRef.current) {
-        endCurrentSegment(currentTime);
-        featureBufferRef.current = [];
-      }
-    } else {
-      silenceCountRef.current = 0;
+    if (energy > SILENCE_THRESHOLD) {
+        silenceFramesRef.current = 0;
+        featureBufferRef.current.push({ energy, spectralFingerprint, timestamp: currentTimeMs });
+        
+        if (featureBufferRef.current.length >= FEATURE_WINDOW_SIZE) {
+            const windowFingerprint = featureBufferRef.current
+                .reduce((acc, f) => {
+                    f.spectralFingerprint.forEach((val, i) => acc[i] += val);
+                    return acc;
+                }, new Array(SPECTRAL_BANDS.length).fill(0))
+                .map(val => val / featureBufferRef.current.length);
 
-      featureBufferRef.current.push(features);
-      if (featureBufferRef.current.length > FEATURE_WINDOW_SIZE) {
-        featureBufferRef.current = featureBufferRef.current.slice(-FEATURE_WINDOW_SIZE);
-      }
-
-      if (featureBufferRef.current.length < 3) {
-        // Not enough features yet
-      } else {
-        const detectedSpeaker = detectSpeaker(featureBufferRef.current);
-
-        if (!currentSegmentRef.current || currentSegmentRef.current.speakerId !== detectedSpeaker) {
-          if (currentSegmentRef.current) {
-            endCurrentSegment(currentTime);
-          }
-
-          currentSegmentRef.current = {
-            speakerId: detectedSpeaker,
-            startMs: currentTime,
-            endMs: currentTime + 100
-          };
-
-          setActiveSpeaker(detectedSpeaker);
-        } else {
-          currentSegmentRef.current.endMs = currentTime;
+            const detectedSpeaker = detectSpeaker(windowFingerprint);
+            
+            if (activeSpeaker !== detectedSpeaker) {
+                endCurrentSegment(currentTimeMs);
+                setActiveSpeaker(detectedSpeaker);
+                const firstTimestamp = featureBufferRef.current[0]?.timestamp || currentTimeMs;
+                currentSegmentRef.current = {
+                    speakerId: detectedSpeaker,
+                    startMs: firstTimestamp,
+                    endMs: currentTimeMs,
+                };
+            } else if (currentSegmentRef.current) {
+                currentSegmentRef.current.endMs = currentTimeMs;
+            }
+            featureBufferRef.current = [];
         }
-      }
+    } else {
+        silenceFramesRef.current++;
+        // Approximate frame duration based on how often rAF is called. This is not perfect but good enough.
+        const frameDuration = 1000 / 60; 
+        const silenceDuration = silenceFramesRef.current * frameDuration;
+        
+        if (silenceDuration >= SILENCE_DURATION_MS && activeSpeaker) {
+            endCurrentSegment(currentTimeMs);
+            featureBufferRef.current = [];
+        }
     }
 
     animationFrameIdRef.current = requestAnimationFrame(processAudioFrame);
-  }, [startTime, calculateFeatures, detectSpeaker, endCurrentSegment, settings.enabled]);
-
+  }, [
+      startTime, settings.enabled, calculateFeatures, detectSpeaker, endCurrentSegment, 
+      SILENCE_THRESHOLD, FEATURE_WINDOW_SIZE, SILENCE_DURATION_MS, SPECTRAL_BANDS, activeSpeaker
+  ]);
 
   const initializeAudioProcessing = useCallback(async () => {
     if (!stream || !settings.enabled || !startTime) return;
 
     try {
-      setIsProcessing(true);
-      setError(null);
-
       const context = AudioContextManager.acquire('diarization');
+      sampleRateRef.current = context.sampleRate;
       
-      if (context.state === 'suspended') {
-        await context.resume();
-      }
-
       const source = context.createMediaStreamSource(stream);
       sourceNodeRef.current = source;
       
       const analyser = context.createAnalyser();
-      analyser.fftSize = AUDIO_CONSTANTS.FFT_SIZE;
+      analyser.fftSize = FFT_SIZE;
       analyser.smoothingTimeConstant = AUDIO_CONSTANTS.SMOOTHING_TIME_CONSTANT;
       analyserRef.current = analyser;
-
-      dataArrayRef.current = new Uint8Array(analyser.fftSize);
-      freqArrayRef.current = new Uint8Array(analyser.frequencyBinCount);
       
       source.connect(analyser);
 
-      if (animationFrameIdRef.current) {
-        cancelAnimationFrame(animationFrameIdRef.current);
-      }
+      if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
       animationFrameIdRef.current = requestAnimationFrame(processAudioFrame);
 
     } catch (err) {
-      console.error('Error initializing audio processing:', err);
-      setError(err instanceof Error ? err.message : 'Failed to initialize audio processing.');
-    } finally {
-      setIsProcessing(false);
+      console.error('Error initializing audio processing for diarization:', err);
     }
-  }, [stream, settings.enabled, startTime, processAudioFrame]);
+  }, [stream, settings.enabled, startTime, processAudioFrame, FFT_SIZE]);
 
   const resetDiarization = useCallback(() => {
     setSegments([]);
     speakerModelsRef.current.clear();
     featureBufferRef.current = [];
-    silenceCountRef.current = 0;
+    silenceFramesRef.current = 0;
     currentSegmentRef.current = null;
     setActiveSpeaker(null);
   }, []);
@@ -295,23 +227,13 @@ const useDiarization = (
     if (currentSegmentRef.current && startTime) {
       endCurrentSegment(Date.now() - startTime);
     }
-    
-    if (animationFrameIdRef.current) {
-      cancelAnimationFrame(animationFrameIdRef.current);
-      animationFrameIdRef.current = null;
-    }
-    
-    if (sourceNodeRef.current) {
-      sourceNodeRef.current.disconnect();
-      sourceNodeRef.current = null;
-    }
-    if (analyserRef.current) {
-        analyserRef.current.disconnect();
-        analyserRef.current = null;
-    }
-    
+    if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
+    animationFrameIdRef.current = null;
+    sourceNodeRef.current?.disconnect();
+    sourceNodeRef.current = null;
+    analyserRef.current?.disconnect();
+    analyserRef.current = null;
     AudioContextManager.release('diarization');
-    setIsProcessing(false);
   }, [startTime, endCurrentSegment]);
 
   useEffect(() => {
@@ -324,13 +246,7 @@ const useDiarization = (
     return cleanup;
   }, [stream, settings.enabled, startTime, initializeAudioProcessing, cleanup, resetDiarization]);
 
-  return { 
-    activeSpeaker, 
-    isProcessing, 
-    error,
-    segments,
-    resetDiarization
-  };
+  return { segments, activeSpeaker, resetDiarization };
 };
 
 export default useDiarization;

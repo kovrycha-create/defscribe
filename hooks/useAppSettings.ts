@@ -1,65 +1,24 @@
-
-
-
-
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { THEME_PRESETS } from '../constants';
-import { type DiarizationSettings, type StatCardKey } from '../types';
+import { type DiarizationSettings, type StatCardKey, type VisualizerBackground } from '../types';
 
-const useResizablePanels = (defaultLeftWidth: number, defaultRightWidth: number, minWidth: number, maxWidth: number) => {
-  const getInitialWidth = (key: string, defaultValue: number): number => {
-    try {
+const getInitialBoolean = (key: string, defaultValue: boolean): boolean => {
+  try {
       const saved = localStorage.getItem(key);
-      if (!saved) return defaultValue;
-      const num = parseInt(saved, 10);
-      return isNaN(num) ? defaultValue : Math.max(minWidth, Math.min(maxWidth, num));
-    } catch {
+      return saved !== null ? saved === 'true' : defaultValue;
+  } catch {
       return defaultValue;
-    }
-  };
-
-  const [leftPanelWidth, setLeftPanelWidth] = useState(() => getInitialWidth('defscribe-leftPanelWidth', defaultLeftWidth));
-  const [rightPanelWidth, setRightPanelWidth] = useState(() => getInitialWidth('defscribe-rightPanelWidth', defaultRightWidth));
-  const activeResizer = useRef<"left" | "right" | null>(null);
-
-  const handleMouseDown = useCallback((resizer: 'left' | 'right') => {
-    activeResizer.current = resizer;
-    document.body.classList.add('resizing');
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!activeResizer.current) return;
-      if (activeResizer.current === 'left') {
-        const newWidth = e.clientX;
-        const constrainedWidth = Math.max(minWidth, Math.min(newWidth, maxWidth));
-        setLeftPanelWidth(constrainedWidth);
-      } else if (activeResizer.current === 'right') {
-        const newWidth = window.innerWidth - e.clientX;
-        const constrainedWidth = Math.max(minWidth, Math.min(newWidth, maxWidth));
-        setRightPanelWidth(constrainedWidth);
-      }
-    };
-    const handleMouseUp = () => {
-      activeResizer.current = null;
-      document.body.classList.remove('resizing');
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  }, [minWidth, maxWidth]);
-  
-  useEffect(() => { try { localStorage.setItem('defscribe-leftPanelWidth', String(leftPanelWidth)); } catch {} }, [leftPanelWidth]);
-  useEffect(() => { try { localStorage.setItem('defscribe-rightPanelWidth', String(rightPanelWidth)); } catch {} }, [rightPanelWidth]);
-  
-  const resetLayout = () => {
-    setLeftPanelWidth(defaultLeftWidth);
-    setRightPanelWidth(defaultRightWidth);
-    try {
-      localStorage.removeItem('defscribe-leftPanelWidth');
-      localStorage.removeItem('defscribe-rightPanelWidth');
-    } catch {}
   }
+};
 
-  return { leftPanelWidth, rightPanelWidth, handleMouseDown, resetLayout };
+const getInitialNumber = (key: string, defaultValue: number): number => {
+    try {
+        const saved = localStorage.getItem(key);
+        const parsed = saved !== null ? parseInt(saved, 10) : defaultValue;
+        return isNaN(parsed) ? defaultValue : parsed;
+    } catch {
+        return defaultValue;
+    }
 };
 
 const useAppSettings = () => {
@@ -70,15 +29,6 @@ const useAppSettings = () => {
         } catch {
             return { primary: '#1E90FF', secondary: '#FF69B4', accent: '#FFD700' };
         }
-    };
-
-    const getInitialBoolean = (key: string, defaultValue: boolean): boolean => {
-      try {
-          const saved = localStorage.getItem(key);
-          return saved !== null ? saved === 'true' : defaultValue;
-      } catch {
-          return defaultValue;
-      }
     };
     
     const [viewModeOverride, _setViewModeOverride] = useState<'desktop' | 'mobile' | null>(() => localStorage.getItem('defscribe-viewModeOverride') as 'desktop' | 'mobile' | null);
@@ -111,6 +61,24 @@ const useAppSettings = () => {
         }
         return THEME_PRESETS[themeId];
     }, [themeId, customThemeColors]);
+    
+    const getInitialPanelLayout = () => ({
+        leftPanelWidth: getInitialNumber('defscribe-leftPanelWidth', 350),
+        rightPanelWidth: getInitialNumber('defscribe-rightPanelWidth', 440),
+        isLeftPanelCollapsed: getInitialBoolean('defscribe-isLeftPanelCollapsed', false),
+        isRightPanelCollapsed: getInitialBoolean('defscribe-isRightPanelCollapsed', false),
+    });
+
+    const [panelLayout, setPanelLayout] = useState(getInitialPanelLayout);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('defscribe-leftPanelWidth', String(panelLayout.leftPanelWidth));
+            localStorage.setItem('defscribe-rightPanelWidth', String(panelLayout.rightPanelWidth));
+            localStorage.setItem('defscribe-isLeftPanelCollapsed', String(panelLayout.isLeftPanelCollapsed));
+            localStorage.setItem('defscribe-isRightPanelCollapsed', String(panelLayout.isRightPanelCollapsed));
+        } catch {}
+    }, [panelLayout]);
 
     const [diarizationSettings, setDiarizationSettings] = useState<DiarizationSettings>({
         enabled: false,
@@ -123,6 +91,12 @@ const useAppSettings = () => {
     const [liveTranslationEnabled, setLiveTranslationEnabled] = useState(false);
     const [transcriptTextSize, setTranscriptTextSize] = useState<'sm' | 'base' | 'lg' | 'xl'>('base');
     const [isRecordingEnabled, _setIsRecordingEnabled] = useState(() => getInitialBoolean('defscribe-isRecordingEnabled', true));
+    const [visualizerBackground, _setVisualizerBackground] = useState<VisualizerBackground>(() => (localStorage.getItem('defscribe-visualizerBackground') as VisualizerBackground) || 'starfield');
+
+    const setVisualizerBackground = (bg: VisualizerBackground) => {
+        _setVisualizerBackground(bg);
+        localStorage.setItem('defscribe-visualizerBackground', bg);
+    };
 
     const setIsRecordingEnabled = (enabled: boolean) => {
         _setIsRecordingEnabled(enabled);
@@ -130,8 +104,6 @@ const useAppSettings = () => {
             localStorage.setItem('defscribe-isRecordingEnabled', String(enabled));
         } catch {}
     };
-
-    const { leftPanelWidth, rightPanelWidth, handleMouseDown } = useResizablePanels(240, 440, 180, 600);
 
     const setSpokenLanguage = useCallback((lang: string) => {
         _setSpokenLanguage(lang);
@@ -205,15 +177,16 @@ const useAppSettings = () => {
         setLiveTranslationEnabled,
         isRecordingEnabled,
         setIsRecordingEnabled,
-        leftPanelWidth,
-        rightPanelWidth,
-        handleMouseDown,
         transcriptTextSize, 
         setTranscriptTextSize,
         statCardOrder,
         setStatCardOrder,
         viewModeOverride,
         setViewModeOverride,
+        visualizerBackground,
+        setVisualizerBackground,
+        panelLayout,
+        setPanelLayout,
     };
 };
 

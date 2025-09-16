@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { type TranscriptEntry, type SpeakerProfile, type SpeakerId } from '../types';
 import Tooltip from './Tooltip';
 
@@ -30,7 +30,6 @@ const ActionsMenu: React.FC<ActionsMenuProps> = ({ entry, speakerProfiles, onTra
     const menuRef = useRef<HTMLDivElement>(null);
     const [copied, setCopied] = useState(false);
 
-    // Close menu when clicking outside
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -101,6 +100,118 @@ const ActionsMenu: React.FC<ActionsMenuProps> = ({ entry, speakerProfiles, onTra
     );
 };
 
+interface TranscriptEntryComponentProps {
+    entry: TranscriptEntry;
+    speakerProfiles: Record<SpeakerId, SpeakerProfile>;
+    showTimestamps: boolean;
+    diarizationEnabled: boolean;
+    onSpeakerTagClick: (speakerId: SpeakerId) => void;
+    renderHighlightedText: (text: string) => React.ReactNode;
+    onTranslateEntry: (entryId: string) => void;
+    onReassignSpeaker: (entryId: string, newSpeakerId: SpeakerId) => void;
+    onUpdateEntryText: (entryId: string, newText: string) => void;
+    transcriptTextSize: 'sm' | 'base' | 'lg' | 'xl';
+}
+
+const TranscriptEntryComponent: React.FC<TranscriptEntryComponentProps> = ({
+    entry, speakerProfiles, showTimestamps, diarizationEnabled, onSpeakerTagClick,
+    renderHighlightedText, onTranslateEntry, onReassignSpeaker, onUpdateEntryText, transcriptTextSize
+}) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editText, setEditText] = useState(entry.text);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const [activeMenuEntryId, setActiveMenuEntryId] = useState<string | null>(null);
+
+    const textSizeClasses = { sm: 'text-sm', base: 'text-base', lg: 'text-lg', xl: 'text-2xl' };
+
+    useEffect(() => {
+        if (isEditing && textareaRef.current) {
+            const textarea = textareaRef.current;
+            textarea.focus();
+            textarea.style.height = 'auto'; // Reset height
+            textarea.style.height = `${textarea.scrollHeight}px`; // Set to content height
+            textarea.select();
+        }
+    }, [isEditing]);
+
+    const handleSave = () => {
+        if (editText.trim() && editText.trim() !== entry.text) {
+            onUpdateEntryText(entry.id, editText.trim());
+        }
+        setIsEditing(false);
+    };
+
+    const handleCancel = () => {
+        setEditText(entry.text);
+        setIsEditing(false);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSave();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            handleCancel();
+        }
+    };
+    
+    const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setEditText(e.target.value);
+        const textarea = e.target;
+        textarea.style.height = 'auto';
+        textarea.style.height = `${textarea.scrollHeight}px`;
+    };
+
+    return (
+        <div className={`relative flex flex-col sm:flex-row items-start gap-x-3 gap-y-1 p-2 rounded-lg hover:bg-slate-800/50 transition-colors fade-in-entry pb-4 group ${activeMenuEntryId === entry.id ? 'z-30' : ''}`}>
+            {showTimestamps && (
+                <div className="w-full sm:w-24 flex-shrink-0 pt-1">
+                    <span className="font-roboto-mono text-xs text-[var(--color-secondary)] bg-[var(--color-secondary)]/10 px-2 py-1 rounded-md">{entry.timestamp}</span>
+                </div>
+            )}
+            <div className={`flex-1 pt-1 ${!showTimestamps ? 'pl-2' : 'sm:pl-0'}`}>
+                <div className="flex items-start gap-2">
+                    {diarizationEnabled && entry.speakerIds && entry.speakerIds.length > 0 && (
+                        <div className="flex items-center justify-center gap-1 pt-0">
+                            {entry.speakerIds.map(id => speakerProfiles[id] ? <SpeakerTag key={id} profile={speakerProfiles[id]} onClick={onSpeakerTagClick} /> : null)}
+                        </div>
+                    )}
+                    <div className="flex-1">
+                        {isEditing ? (
+                            <textarea
+                                ref={textareaRef}
+                                value={editText}
+                                onChange={handleTextChange}
+                                onBlur={handleSave}
+                                onKeyDown={handleKeyDown}
+                                className={`w-full bg-slate-700/50 text-slate-200 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-none overflow-hidden ${textSizeClasses[transcriptTextSize]}`}
+                                rows={1}
+                            />
+                        ) : (
+                            <>
+                                <p onClick={() => setIsEditing(true)} className={`text-slate-300 leading-relaxed cursor-pointer ${textSizeClasses[transcriptTextSize]}`}>{renderHighlightedText(entry.text)}</p>
+                                {entry.isTranslating && <p className="text-sm text-slate-500 italic mt-1 pl-2">Translating...</p>}
+                                {entry.translatedText && <p className="text-sm text-slate-400 italic mt-1 pl-2 border-l-2 border-slate-600">{entry.translatedText}</p>}
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
+            <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity z-30">
+                <Tooltip content="Actions">
+                    <button onClick={(e) => { e.stopPropagation(); setActiveMenuEntryId(prev => prev === entry.id ? null : entry.id); }} className="w-6 h-6 rounded-md hover:bg-slate-700/80 flex items-center justify-center actions-menu-trigger">
+                        <i className="fas fa-ellipsis-v text-xs"></i>
+                    </button>
+                </Tooltip>
+            </div>
+            {activeMenuEntryId === entry.id && (
+                <ActionsMenu entry={entry} speakerProfiles={speakerProfiles} onTranslate={onTranslateEntry} onReassign={onReassignSpeaker} onClose={() => setActiveMenuEntryId(null)} />
+            )}
+            <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-0 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/80 to-transparent transition-all duration-500 group-hover:w-[95%] shadow-[0_0_8px_var(--color-primary)]"></div>
+        </div>
+    );
+};
 
 interface TranscriptDisplayProps {
   entries: TranscriptEntry[];
@@ -118,6 +229,7 @@ interface TranscriptDisplayProps {
   endRef: React.RefObject<HTMLDivElement>;
   onTranslateEntry: (entryId: string) => void;
   onReassignSpeaker: (entryId: string, newSpeakerId: SpeakerId) => void;
+  onUpdateEntryText: (entryId: string, newText: string) => void;
   transcriptTextSize: 'sm' | 'base' | 'lg' | 'xl';
   isTrueMobile: boolean;
 }
@@ -125,58 +237,35 @@ interface TranscriptDisplayProps {
 const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
   entries, isListening, liveText, liveTextState, activeSpeaker, speakerProfiles,
   showTimestamps, diarizationEnabled, onSpeakerTagClick, searchQuery, highlightedTopic,
-  containerRef, endRef, onTranslateEntry, onReassignSpeaker, transcriptTextSize, isTrueMobile
+  containerRef, endRef, onTranslateEntry, onReassignSpeaker, onUpdateEntryText,
+  transcriptTextSize, isTrueMobile
 }) => {
-
-  const [activeMenuEntryId, setActiveMenuEntryId] = useState<string | null>(null);
   const textSizeClasses = { sm: 'text-sm', base: 'text-base', lg: 'text-lg', xl: 'text-2xl' };
 
-  const renderHighlightedText = React.useCallback((text: string): React.ReactNode => {
+  const renderHighlightedText = useCallback((text: string): React.ReactNode => {
     if (!searchQuery.trim() && !highlightedTopic) {
       return text;
     }
 
     let nodes: (string | React.ReactElement)[] = [text];
 
-    // 1. Topic Highlighting
     if (highlightedTopic) {
       const topicWords = highlightedTopic.split(/\s+/).filter(w => w.length > 2);
       if (topicWords.length > 0) {
         const topicRegex = new RegExp(`\\b(${topicWords.map(w => w.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')).join('|')})\\b`, 'gi');
-        nodes = nodes.flatMap((node, index) => {
-          if (typeof node === 'string') {
-            return node.split(topicRegex).map((part, partIndex) => {
-              if (partIndex % 2 === 1) {
-                return <span key={`${index}-${partIndex}-topic`} className="topic-highlight">{part}</span>;
-              }
-              return part;
-            });
-          }
-          return node;
-        });
+        nodes = nodes.flatMap((node, index) => typeof node === 'string' ? node.split(topicRegex).map((part, partIndex) => partIndex % 2 === 1 ? <span key={`${index}-${partIndex}-topic`} className="topic-highlight">{part}</span> : part) : node);
       }
     }
 
-    // 2. Search Query Highlighting
     if (searchQuery.trim()) {
       const escapedQuery = searchQuery.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
       const searchRegex = new RegExp(`(${escapedQuery})`, 'gi');
       nodes = nodes.flatMap((node, index) => {
         if (typeof node === 'string') {
-          return node.split(searchRegex).map((part, partIndex) => {
-            if (partIndex % 2 === 1) {
-              return <mark key={`${index}-${partIndex}-search`}>{part}</mark>;
-            }
-            return part;
-          });
+          return node.split(searchRegex).map((part, partIndex) => partIndex % 2 === 1 ? <mark key={`${index}-${partIndex}-search`}>{part}</mark> : part);
         }
         if (React.isValidElement<{ children?: React.ReactNode }>(node) && typeof node.props.children === 'string') {
-          const children = node.props.children.split(searchRegex).map((part, partIndex) => {
-            if (partIndex % 2 === 1) {
-              return <mark key={`${index}-${partIndex}-search-nested`}>{part}</mark>;
-            }
-            return part;
-          });
+          const children = node.props.children.split(searchRegex).map((part, partIndex) => partIndex % 2 === 1 ? <mark key={`${index}-${partIndex}-search-nested`}>{part}</mark> : part);
           return React.cloneElement(node, { ...node.props, key: node.key || index }, children);
         }
         return node;
@@ -189,54 +278,19 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
   return (
     <div ref={containerRef} className="h-full overflow-y-auto pr-2">
       {entries.map((entry) => (
-        <div 
-            key={entry.id} 
-            className={`relative flex flex-col sm:flex-row items-start gap-x-3 gap-y-1 p-2 rounded-lg hover:bg-slate-800/50 transition-colors fade-in-entry pb-4 group ${activeMenuEntryId === entry.id ? 'z-30' : ''}`}
-        >
-            {showTimestamps && (
-                <div className="w-full sm:w-24 flex-shrink-0 pt-1">
-                    <span className="font-roboto-mono text-xs text-[var(--color-secondary)] bg-[var(--color-secondary)]/10 px-2 py-1 rounded-md">{entry.timestamp}</span>
-                </div>
-            )}
-            <div className={`flex-1 pt-1 ${!showTimestamps ? 'pl-2' : 'sm:pl-0'}`}>
-                <div className="flex items-start gap-2">
-                    {diarizationEnabled && entry.speakerIds && entry.speakerIds.length > 0 && (
-                        <div className="flex items-center justify-center gap-1 pt-0">
-                            {entry.speakerIds.map(id => speakerProfiles[id] ? <SpeakerTag key={id} profile={speakerProfiles[id]} onClick={onSpeakerTagClick} /> : null)}
-                        </div>
-                    )}
-                    <div className="flex-1">
-                        <p className={`text-slate-300 leading-relaxed ${textSizeClasses[transcriptTextSize]}`}>{renderHighlightedText(entry.text)}</p>
-                        {entry.isTranslating && <p className="text-sm text-slate-500 italic mt-1 pl-2">Translating...</p>}
-                        {entry.translatedText && <p className="text-sm text-slate-400 italic mt-1 pl-2 border-l-2 border-slate-600">{entry.translatedText}</p>}
-                    </div>
-                </div>
-            </div>
-            <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity z-30">
-                <Tooltip content="Actions">
-                    <button 
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        setActiveMenuEntryId(prev => prev === entry.id ? null : entry.id); 
-                      }} 
-                      className="w-6 h-6 rounded-md hover:bg-slate-700/80 flex items-center justify-center actions-menu-trigger"
-                    >
-                        <i className="fas fa-ellipsis-v text-xs"></i>
-                    </button>
-                </Tooltip>
-            </div>
-
-            {activeMenuEntryId === entry.id && (
-                <ActionsMenu
-                    entry={entry}
-                    speakerProfiles={speakerProfiles}
-                    onTranslate={onTranslateEntry}
-                    onReassign={onReassignSpeaker}
-                    onClose={() => setActiveMenuEntryId(null)}
-                />
-            )}
-            <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-0 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/80 to-transparent transition-all duration-500 group-hover:w-[95%] shadow-[0_0_8px_var(--color-primary)]"></div>
-        </div>
+        <TranscriptEntryComponent
+          key={entry.id}
+          entry={entry}
+          speakerProfiles={speakerProfiles}
+          showTimestamps={showTimestamps}
+          diarizationEnabled={diarizationEnabled}
+          onSpeakerTagClick={onSpeakerTagClick}
+          renderHighlightedText={renderHighlightedText}
+          onTranslateEntry={onTranslateEntry}
+          onReassignSpeaker={onReassignSpeaker}
+          onUpdateEntryText={onUpdateEntryText}
+          transcriptTextSize={transcriptTextSize}
+        />
       ))}
       
       {entries.length === 0 && !isListening && (

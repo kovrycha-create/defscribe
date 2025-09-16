@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 
 // --- Components ---
@@ -15,6 +13,9 @@ import Toast, { type ToastMessage, type ToastType } from './components/Toast';
 import CosmicBackground from './components/CosmicBackground';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import TourGuide from './components/TourGuide';
+import CursorTrail from './components/CursorTrail';
+import Resizer from './components/Resizer';
+import CollapsedPanelTab from './components/CollapsedPanelTab';
 
 // --- Hooks ---
 import useAppSettings from './hooks/useAppSettings';
@@ -24,11 +25,13 @@ import useAnalytics from './hooks/useAnalytics';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { useTour } from './hooks/useTour';
+import useProactiveAssistant from './hooks/useProactiveAssistant';
 
 // --- Types & Constants ---
-import { type SummaryStyle } from './types';
+import { type SummaryStyle, type Emotion, type ProactiveMessage, type GeneratedTitle } from './types';
 import { AVATAR_EMOTIONS } from './constants';
 import * as SAMPLE_DATA from './sample-data';
+import { getWwydResponse, type WwydMessage } from './services/geminiService';
 
 const usePrevious = <T,>(value: T): T | undefined => {
   const ref = useRef<T | undefined>(undefined);
@@ -36,10 +39,19 @@ const usePrevious = <T,>(value: T): T | undefined => {
   return ref.current;
 };
 
+// --- Resizable Panel Constants ---
+const DEFAULT_LEFT_WIDTH = 350;
+const DEFAULT_RIGHT_WIDTH = 440;
+const MIN_PANEL_WIDTH = 280;
+const COLLAPSED_WIDTH = 56;
+const RESIZER_SENSITIVITY = 1;
+
 
 const App: React.FC = () => {
   // --- Primary Hooks ---
   const appSettings = useAppSettings();
+  const { panelLayout, setPanelLayout } = appSettings;
+  const { leftPanelWidth, rightPanelWidth, isLeftPanelCollapsed, isRightPanelCollapsed } = panelLayout;
   
   // --- UI & State Management ---
   const isMobileQuery = useMediaQuery('(max-width: 1023px)');
@@ -64,6 +76,53 @@ const App: React.FC = () => {
   const [showVisualizerHint, setShowVisualizerHint] = useState(false);
   const [isSettingsCollapsed, setIsSettingsCollapsed] = useState(true);
   const [sessionKey, setSessionKey] = useState(1);
+  const [wwydMessages, setWwydMessages] = useState<Array<{ text: string; id: number; type: WwydMessage['type'] }> | null>(null);
+  const [isWwydLoading, setIsWwydLoading] = useState(false);
+  const [proactiveMessage, setProactiveMessage] = useState<ProactiveMessage | null>(null);
+  
+  const mainContainerRef = useRef<HTMLElement>(null);
+
+  // --- Resizable Panel Handlers ---
+  const handleLeftDrag = useCallback((deltaX: number) => {
+    if (panelLayout.isLeftPanelCollapsed || !mainContainerRef.current) return;
+
+    setPanelLayout(currentLayout => {
+        const newWidth = currentLayout.leftPanelWidth + (deltaX * RESIZER_SENSITIVITY);
+        // Clamp the new width between the minimum and the default width (as max).
+        const clampedWidth = Math.max(MIN_PANEL_WIDTH, Math.min(newWidth, DEFAULT_LEFT_WIDTH));
+        return { ...currentLayout, leftPanelWidth: clampedWidth };
+    });
+  }, [panelLayout.isLeftPanelCollapsed, setPanelLayout]);
+
+  const handleRightDrag = useCallback((deltaX: number) => {
+    if (panelLayout.isRightPanelCollapsed || !mainContainerRef.current) return;
+    const mainWidth = mainContainerRef.current.offsetWidth;
+    
+    setPanelLayout(currentLayout => {
+        const maxRightWidth = mainWidth - currentLayout.leftPanelWidth - MIN_PANEL_WIDTH - 16;
+        const newWidth = currentLayout.rightPanelWidth - (deltaX * RESIZER_SENSITIVITY);
+        const clampedWidth = Math.max(MIN_PANEL_WIDTH, Math.min(newWidth, maxRightWidth));
+        return { ...currentLayout, rightPanelWidth: clampedWidth };
+    });
+  }, [panelLayout.isRightPanelCollapsed, setPanelLayout]);
+  
+  const handleResetLayout = useCallback(() => {
+      setPanelLayout(currentLayout => ({
+        ...currentLayout,
+        isLeftPanelCollapsed: false,
+        isRightPanelCollapsed: false,
+        leftPanelWidth: DEFAULT_LEFT_WIDTH,
+        rightPanelWidth: DEFAULT_RIGHT_WIDTH,
+    }));
+  }, [setPanelLayout]);
+
+  const handleToggleCollapseLeft = useCallback(() => {
+      setPanelLayout(currentLayout => ({ ...currentLayout, isLeftPanelCollapsed: !currentLayout.isLeftPanelCollapsed }));
+  }, [setPanelLayout]);
+
+  const handleToggleCollapseRight = useCallback(() => {
+      setPanelLayout(currentLayout => ({ ...currentLayout, isRightPanelCollapsed: !currentLayout.isRightPanelCollapsed }));
+  }, [setPanelLayout]);
 
   // --- Tour Hook & State ---
   const [tourSummary, setTourSummary] = useState(SAMPLE_DATA.SAMPLE_SUMMARIES.detailed);
@@ -109,6 +168,19 @@ const App: React.FC = () => {
     isCloudMode: speech.isCloudMode,
   });
 
+  // --- Proactive Assistant ---
+  const handleNudge = useCallback((text: string) => {
+    setProactiveMessage({ text, id: Date.now() });
+  }, []);
+
+  useProactiveAssistant({
+    isListening: speech.isListening,
+    transcriptEntries: transcriptManager.transcriptEntries,
+    speechAnalytics: analytics.speechAnalytics,
+    onNudge: handleNudge,
+  });
+
+
   // --- Derived State & Refs for Tour/Real Data ---
   const displayedTranscriptEntries = isTourActive ? SAMPLE_DATA.SAMPLE_TRANSCRIPT_ENTRIES : transcriptManager.transcriptEntries;
   const displayedSpeakerProfiles = isTourActive ? SAMPLE_DATA.SAMPLE_SPEAKER_PROFILES : transcriptManager.speakerProfiles;
@@ -118,9 +190,11 @@ const App: React.FC = () => {
   const displayedActionItems = isTourActive ? SAMPLE_DATA.SAMPLE_ACTION_ITEMS : analytics.actionItems;
   const displayedSnippets = isTourActive ? SAMPLE_DATA.SAMPLE_SNIPPETS : analytics.snippets;
   const displayedTopics = isTourActive ? SAMPLE_DATA.SAMPLE_TOPICS : analytics.topics;
+  const displayedTitles = isTourActive ? SAMPLE_DATA.SAMPLE_TITLES : analytics.titles;
   const displayedAvatarEmotion = isTourActive ? 'listening' : analytics.avatarEmotion;
   const isDisplayedAnalyzing = isTourActive ? false : analytics.isAnalyzing;
   const isDisplayedSummarizing = isTourActive ? false : analytics.isSummarizing;
+  const isDisplayedGeneratingTitles = isTourActive ? false : analytics.isGeneratingTitles;
 
   const fullTranscriptText = useMemo(() => {
     return displayedTranscriptEntries.map(entry => {
@@ -149,7 +223,7 @@ const App: React.FC = () => {
     if (prevIsListening && !speech.isListening && fullTranscriptText.trim() && !isTourActive) {
         analytics.generateAllAnalytics(fullTranscriptText, transcriptManager.speakerProfiles);
     }
-  }, [speech.isListening, prevIsListening, fullTranscriptText, transcriptManager.speakerProfiles, analytics.generateAllAnalytics, isTourActive]);
+  }, [speech.isListening, prevIsListening, fullTranscriptText, transcriptManager.speakerProfiles, analytics, isTourActive]);
 
   useEffect(() => {
     let fadeTimer: number;
@@ -221,6 +295,52 @@ const App: React.FC = () => {
   
   const handleOpenChat = () => setIsChatOpen(true);
   
+  const handleWwyd = useCallback(async (e: React.MouseEvent) => {
+    if (isWwydLoading || isTourActive) return;
+    setIsWwydLoading(true);
+
+    const isAltClick = e.altKey;
+    const isCtrlClick = e.ctrlKey;
+
+    const lastEntryTime = transcriptManager.transcriptEntries.length > 0
+        ? transcriptManager.transcriptEntries[transcriptManager.transcriptEntries.length - 1].rawTimestamp
+        : transcriptManager.startTimeRef.current;
+    
+    const pause_ms = speech.isListening && lastEntryTime ? Date.now() - lastEntryTime : 0;
+
+    const sentimentMap: Partial<Record<Emotion, 'neutral'|'frustrated'|'sad'|'tense'|'upbeat'>> = {
+      frustrated: 'frustrated', mad: 'frustrated',
+      sad: 'sad', hurt: 'sad',
+      intense: 'tense',
+      happy: 'upbeat', loving: 'upbeat', goofy: 'upbeat',
+    };
+
+    const inputs = {
+        pause_ms: pause_ms > 500 ? pause_ms : undefined,
+        wpm: analytics.speechAnalytics.wpm || undefined,
+        sentiment_hint: sentimentMap[analytics.avatarEmotion] || 'neutral',
+        recentTranscript: transcriptManager.transcriptEntries.slice(-3).map(e => `${transcriptManager.speakerProfiles[e.speakerIds?.[0] || 'S1']?.label || 'Speaker'}: ${e.text}`).join('\n'),
+    };
+
+    try {
+        const response = await getWwydResponse(inputs, isAltClick ? 'walltalk' : 'standard', isCtrlClick);
+        if (response && response.length > 0) {
+            const newMsgs = response.map(msg => ({ text: msg.text, id: Date.now() + Math.random(), type: msg.type }));
+            setWwydMessages(newMsgs);
+        }
+    } catch (error) {
+        console.error("WWYD feature error:", error);
+        addToast("Ymzo is Silent", "Could not get guidance at this time.", "error");
+    } finally {
+        setIsWwydLoading(false);
+    }
+  }, [isWwydLoading, isTourActive, transcriptManager, speech.isListening, analytics.speechAnalytics.wpm, analytics.avatarEmotion, addToast]);
+  
+  const dismissWwydMessage = useCallback(() => {
+    setWwydMessages(null);
+  }, []);
+
+
   const dismissToast = (id: number) => {
     setToasts(currentToasts => currentToasts.filter(toast => toast.id !== id));
   };
@@ -298,6 +418,8 @@ const App: React.FC = () => {
         isSettingsCollapsed={isSettingsCollapsed}
         setIsSettingsCollapsed={setIsSettingsCollapsed}
         isTourActive={isTourActive}
+        onWwyd={handleWwyd}
+        isWwydLoading={isWwydLoading}
     />
   );
   
@@ -312,6 +434,7 @@ const App: React.FC = () => {
       activeSpeaker={transcriptManager.activeSpeaker}
       speakerProfiles={displayedSpeakerProfiles}
       handleUpdateSpeakerLabel={transcriptManager.handleUpdateSpeakerLabel}
+      onUpdateEntryText={transcriptManager.handleUpdateEntryText}
       showTimestamps={appSettings.showTimestamps}
       setShowTimestamps={appSettings.setShowTimestamps}
       diarizationEnabled={appSettings.diarizationSettings.enabled}
@@ -332,6 +455,12 @@ const App: React.FC = () => {
       setIsRecordingEnabled={appSettings.setIsRecordingEnabled}
       isTrueMobile={isTrueMobile}
       showVisualizerHint={showVisualizerHint}
+      wwydMessages={wwydMessages}
+      onDismissWwyd={dismissWwydMessage}
+      proactiveMessage={proactiveMessage}
+      onDismissProactiveMessage={() => setProactiveMessage(null)}
+      visualizerBackground={appSettings.visualizerBackground}
+      setVisualizerBackground={appSettings.setVisualizerBackground}
     />
   );
 
@@ -344,7 +473,11 @@ const App: React.FC = () => {
       actionItems={displayedActionItems}
       snippets={displayedSnippets}
       topics={displayedTopics}
+      titles={displayedTitles}
       isAnalyzing={isDisplayedAnalyzing}
+      isGeneratingTitles={isDisplayedGeneratingTitles}
+      onGenerateTitles={() => analytics.handleGenerateTitles(fullTranscriptText)}
+      hasEnoughContent={hasContent}
       speechAnalytics={displayedSpeechAnalytics}
       speakerProfiles={displayedSpeakerProfiles}
       transcriptEntries={displayedTranscriptEntries}
@@ -360,7 +493,8 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <CosmicBackground />
-      <main className={`h-screen w-screen bg-[var(--color-bg-deep)] text-slate-200 flex ${isMobileView ? 'flex-col' : 'flex-col md:flex-row md:p-3 md:gap-3'}`}>
+      <CursorTrail />
+      <main ref={mainContainerRef} className={`h-screen w-screen bg-transparent text-slate-200 flex ${isMobileView ? 'flex-col' : 'flex-row p-3 gap-3'}`}>
         {isMobileView ? (
           <>
             <div className="flex-1 min-h-0">
@@ -377,16 +511,38 @@ const App: React.FC = () => {
           </>
         ) : (
           <>
-            <div style={{ width: `${appSettings.leftPanelWidth}px` }} className="h-full flex-shrink-0">
-                {controlPanel}
+            <div style={{ width: isLeftPanelCollapsed ? COLLAPSED_WIDTH : leftPanelWidth, transition: 'width 0.3s ease-out' }} className="h-full flex-shrink-0 overflow-hidden">
+                {isLeftPanelCollapsed ? (
+                    <CollapsedPanelTab title="Controls" icon="fa-sliders-h" onClick={handleToggleCollapseLeft} />
+                ) : (
+                    controlPanel
+                )}
             </div>
-            <div className="resizer" onMouseDown={() => appSettings.handleMouseDown('left')}></div>
+            
+            <Resizer 
+                onDrag={handleLeftDrag} 
+                onDoubleClick={handleResetLayout} 
+                onCtrlClick={handleToggleCollapseLeft} 
+                isPanelCollapsed={isLeftPanelCollapsed}
+            />
+
             <div className="flex-1 h-full min-w-0" data-tour-id="transcript-panel">
                 {mainContentPanel}
             </div>
-            <div className="resizer" onMouseDown={() => appSettings.handleMouseDown('right')}></div>
-            <div style={{ width: `${appSettings.rightPanelWidth}px` }} className="h-full flex-shrink-0" data-tour-id="analytics-panel">
-                {analyticsPanel}
+
+            <Resizer 
+                onDrag={handleRightDrag} 
+                onDoubleClick={handleResetLayout} 
+                onCtrlClick={handleToggleCollapseRight} 
+                isPanelCollapsed={isRightPanelCollapsed}
+            />
+
+            <div style={{ width: isRightPanelCollapsed ? COLLAPSED_WIDTH : rightPanelWidth, transition: 'width 0.3s ease-out' }} className="h-full flex-shrink-0 overflow-hidden" data-tour-id="analytics-panel">
+                 {isRightPanelCollapsed ? (
+                    <CollapsedPanelTab title="Analytics" icon="fa-chart-pie" onClick={handleToggleCollapseRight} />
+                ) : (
+                    analyticsPanel
+                )}
             </div>
           </>
         )}

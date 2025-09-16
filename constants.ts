@@ -1,5 +1,6 @@
 
 
+
 import { type Emotion } from './types';
 
 export const FILLER_WORDS: Set<string> = new Set([
@@ -7,6 +8,14 @@ export const FILLER_WORDS: Set<string> = new Set([
   "actually", "literally", "anyway", "so", "well", "right", "i mean",
   "just", "yeah", "hmm", "erm", "mmm", "okay"
 ]);
+
+export const PROACTIVE_ASSISTANT = {
+  GLOBAL_COOLDOWN_MS: 90 * 1000,
+  SILENCE_THRESHOLD_MS: 15 * 1000,
+  WPM_RUSHING_THRESHOLD: 190,
+  FILLER_WORD_RATIO_THRESHOLD: 0.08, // 8% of words are fillers in recent transcript
+  FILLER_WORD_LOOKBEHIND_ENTRIES: 5,
+};
 
 export const THEME_PRESETS: { [key: number]: { primary: string; secondary:string; accent: string } } = {
   1: { primary: "#4d8aff", secondary: "#a777ff", accent: "#ffc94d" }, // CosmoTech Default

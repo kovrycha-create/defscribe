@@ -5,7 +5,9 @@ import Tooltip from '../Tooltip';
 import SpeakerEditorModal from '../SpeakerEditorModal';
 import AudioPlayer from '../AudioPlayer';
 import RecordingControls from '../RecordingControls';
-import { type TranscriptEntry, type SpeakerId, type SpeakerProfile } from '../../types';
+import ProactiveAssistantMessage from '../ProactiveAssistantMessage';
+import { type TranscriptEntry, type SpeakerId, type SpeakerProfile, type VisualizerBackground, type ProactiveMessage } from '../../types';
+import { type WwydMessage } from '../../services/geminiService';
 
 interface MainContentPanelProps {
   isListening: boolean;
@@ -17,6 +19,7 @@ interface MainContentPanelProps {
   activeSpeaker: SpeakerId | null;
   speakerProfiles: Record<SpeakerId, SpeakerProfile>;
   handleUpdateSpeakerLabel: (speakerId: SpeakerId, newLabel: string) => void;
+  onUpdateEntryText: (entryId: string, newText: string) => void;
   showTimestamps: boolean;
   setShowTimestamps: (show: boolean) => void;
   diarizationEnabled: boolean;
@@ -37,15 +40,22 @@ interface MainContentPanelProps {
   setIsRecordingEnabled: (enabled: boolean) => void;
   isTrueMobile: boolean;
   showVisualizerHint: boolean;
+  wwydMessages: Array<{ text: string; id: number; type: WwydMessage['type'] }> | null;
+  onDismissWwyd: () => void;
+  proactiveMessage: ProactiveMessage | null;
+  onDismissProactiveMessage: () => void;
+  visualizerBackground: VisualizerBackground;
+  setVisualizerBackground: (bg: VisualizerBackground) => void;
 }
 
 const MainContentPanel: React.FC<MainContentPanelProps> = ({
   isListening, stream, themeColors, transcriptEntries, liveText, liveTextState,
-  activeSpeaker, speakerProfiles, handleUpdateSpeakerLabel, showTimestamps, setShowTimestamps, diarizationEnabled, onOpenChat,
+  activeSpeaker, speakerProfiles, handleUpdateSpeakerLabel, onUpdateEntryText, showTimestamps, setShowTimestamps, diarizationEnabled, onOpenChat,
   onTranslateEntry, onReassignSpeaker, transcriptTextSize, setTranscriptTextSize,
   visualizerHeight, setVisualizerHeight, highlightedTopic, audioBlobUrl, onDeleteAudio,
   recordingDuration, onStop, onStart, isRecordingEnabled, setIsRecordingEnabled, isTrueMobile,
-  showVisualizerHint
+  showVisualizerHint, wwydMessages, onDismissWwyd, proactiveMessage, onDismissProactiveMessage,
+  visualizerBackground, setVisualizerBackground
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingSpeaker, setEditingSpeaker] = useState<SpeakerProfile | null>(null);
@@ -207,8 +217,59 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
             </div>
         </header>
 
+        {wwydMessages && wwydMessages.length > 0 && (
+          <div key={wwydMessages.map(m => m.id).join('-')} className="relative">
+            <div className="space-y-2">
+              {wwydMessages.map((msg) => {
+                const isTimeMessage = msg.type === 'time';
+                return (
+                  <div key={msg.id} className={`p-3 rounded-lg shadow-lg animate-[fadeIn_0.3s_ease-out] ${
+                      isTimeMessage
+                        ? 'border border-amber-500/30 bg-amber-900/20'
+                        : 'border border-purple-400/30 bg-purple-900/20'
+                  }`}>
+                      <p className={`text-sm pr-6 flex items-start ${isTimeMessage ? 'text-amber-200' : 'text-purple-200'}`}>
+                          <span className="flex-shrink-0 flex items-center mr-2 pt-0.5">
+                              {isTimeMessage ? (
+                                  <i className="fas fa-clock text-amber-400"></i>
+                              ) : (
+                                  <span className="font-bold text-purple-300">✦</span>
+                              )}
+                          </span>
+                          <span className="flex-1">
+                            <span className={`font-bold mr-2 ${isTimeMessage ? 'text-amber-300' : 'text-purple-300'}`}>Ymzo says:</span>
+                            {msg.text}
+                          </span>
+                      </p>
+                  </div>
+                );
+              })}
+            </div>
+            <button 
+              onClick={onDismissWwyd} 
+              className="absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full text-purple-300 hover:text-white hover:bg-purple-700/50 transition-colors z-10"
+              aria-label="Dismiss message"
+            >
+              <i className="fas fa-times text-sm"></i>
+            </button>
+          </div>
+        )}
+
         <div className="z-10 relative transition-all duration-300 ease-in-out" ref={visualizerContainerRef} style={{ height: `${visualizerHeight}px` }}>
-            <Visualizer isListening={isListening} stream={stream} themeColors={themeColors} height={visualizerHeight} />
+            {proactiveMessage && (
+              <ProactiveAssistantMessage
+                message={proactiveMessage}
+                onDismiss={onDismissProactiveMessage}
+              />
+            )}
+            <Visualizer 
+              isListening={isListening} 
+              stream={stream} 
+              themeColors={themeColors} 
+              height={visualizerHeight} 
+              background={visualizerBackground}
+              setBackground={setVisualizerBackground}
+            />
         </div>
         
         <Tooltip content="Double-click to toggle size">
@@ -235,6 +296,7 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
             endRef={endRef}
             onTranslateEntry={onTranslateEntry}
             onReassignSpeaker={onReassignSpeaker}
+            onUpdateEntryText={onUpdateEntryText}
             transcriptTextSize={transcriptTextSize}
             isTrueMobile={isTrueMobile}
           />

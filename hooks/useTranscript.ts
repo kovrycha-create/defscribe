@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { type TranscriptEntry, type SpeakerId, type SpeakerProfile, type DiarizationSettings } from '../types';
 import { DIARIZATION_PALETTE } from '../constants';
@@ -36,21 +35,21 @@ const useTranscript = ({
     const startTimeRef = useRef<number | null>(null);
     const prevFinalTranscript = usePrevious(finalTranscript);
     
-    const { activeSpeaker, segments, resetDiarization } = useDiarization(
+    // FIX: Get segments and the live active speaker from the diarization hook.
+    const { segments, activeSpeaker, resetDiarization } = useDiarization(
         stream, 
         { ...diarizationSettings, enabled: diarizationSettings.enabled && !isCloudMode }, 
         startTimeRef.current
     );
 
     useEffect(() => {
-        // Automatically create/update speaker profiles when new speakers are detected
-        const allSpeakerIds = new Set(segments.map(s => s.speakerId));
-        if (activeSpeaker) allSpeakerIds.add(activeSpeaker);
-
+        // Automatically create/update speaker profiles when new speakers appear in segments.
+        const allSpeakerIdsInSegments = new Set(segments.map(s => s.speakerId));
+        
         setSpeakerProfiles(prevProfiles => {
             const newProfiles = { ...prevProfiles };
-            let changed = false;
-            allSpeakerIds.forEach(id => {
+            let hasChanged = false;
+            allSpeakerIdsInSegments.forEach(id => {
                 if (!newProfiles[id]) {
                     const profileIndex = parseInt(id.replace('S', ''), 10) - 1;
                     newProfiles[id] = {
@@ -59,13 +58,14 @@ const useTranscript = ({
                         color: DIARIZATION_PALETTE[profileIndex % DIARIZATION_PALETTE.length],
                         isEditable: true,
                     };
-                    changed = true;
+                    hasChanged = true;
                 }
             });
-            return changed ? newProfiles : prevProfiles;
+            return hasChanged ? newProfiles : prevProfiles;
         });
-    }, [segments, activeSpeaker]);
+    }, [segments]);
 
+    // Effect for creating new transcript entries when finalTranscript updates
     useEffect(() => {
         if (!finalTranscript.trim()) {
             if (transcriptEntries.length > 0) startTimeRef.current = null;
@@ -78,8 +78,8 @@ const useTranscript = ({
 
         const newText = finalTranscript.slice(prevFinalTranscript?.length || 0).trim();
         if (newText) {
-            // Cloud mode: transcript comes in one block with speaker labels
             if (isCloudMode) {
+                // Cloud mode logic remains the same as it provides speaker tags directly.
                 const cloudSegments = newText.split(/(?=SPEAKER_\d{2}:)/g);
                 const newEntries: TranscriptEntry[] = [];
                 
@@ -88,90 +88,85 @@ const useTranscript = ({
                     if (match) {
                         const speakerNum = match[1];
                         const text = match[2].trim();
-                        const speakerId = `S${parseInt(speakerNum, 10)}`;
+                        const speakerId = `S${parseInt(speakerNum, 10)}` as SpeakerId;
 
                         setSpeakerProfiles(prev => {
                             if (prev[speakerId]) return prev;
                             const profileIndex = parseInt(speakerNum, 10) - 1;
-                            const newProfile: SpeakerProfile = {
-                                id: speakerId,
-                                label: `Speaker ${parseInt(speakerNum, 10)}`,
-                                color: DIARIZATION_PALETTE[profileIndex % DIARIZATION_PALETTE.length],
-                                isEditable: true,
-                            };
+                            const newProfile: SpeakerProfile = { id: speakerId, label: `Speaker ${parseInt(speakerNum, 10)}`, color: DIARIZATION_PALETTE[profileIndex % DIARIZATION_PALETTE.length], isEditable: true, };
                             return {...prev, [speakerId]: newProfile};
                         });
                         
                         const entryTimestamp = Date.now() + index;
-                        newEntries.push({
-                            id: `entry-${entryTimestamp}`,
-                            rawTimestamp: entryTimestamp,
-                            timestamp: new Date(entryTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                            text: text,
-                            isFinal: true,
-                            speakerIds: [speakerId],
-                        });
-                    } else { // Handle text without a speaker tag if any
+                        newEntries.push({ id: `entry-${entryTimestamp}`, rawTimestamp: entryTimestamp, timestamp: new Date(entryTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), text: text, isFinal: true, speakerIds: [speakerId], });
+                    } else {
                          const entryTimestamp = Date.now() + index;
-                         newEntries.push({
-                            id: `entry-${entryTimestamp}`,
-                            rawTimestamp: entryTimestamp,
-                            timestamp: new Date(entryTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                            text: segment.trim(),
-                            isFinal: true,
-                            speakerIds: [],
-                        });
+                         newEntries.push({ id: `entry-${entryTimestamp}`, rawTimestamp: entryTimestamp, timestamp: new Date(entryTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), text: segment.trim(), isFinal: true, speakerIds: [], });
                     }
                 });
                 setTranscriptEntries(prev => [...prev, ...newEntries]);
-
-            } else { // Native mode: transcript comes in real-time chunks
+            } else { // Native mode: Create entry WITHOUT speakerId. It will be assigned later.
                 const entryTimestamp = Date.now();
-                const entryStartMs = entryTimestamp - (startTimeRef.current || entryTimestamp);
-                const overlappingSegment = [...segments].reverse().find(
-                    seg => entryStartMs >= seg.startMs && entryStartMs <= seg.endMs
-                );
-                let speakerId = overlappingSegment ? overlappingSegment.speakerId : activeSpeaker;
-                
-                if (!speakerId && segments.length > 0) {
-                    const lastSegment = segments[segments.length - 1];
-                    if (entryStartMs - lastSegment.endMs < 2000) {
-                        speakerId = lastSegment.speakerId;
-                    }
-                }
-
                 const newEntry: TranscriptEntry = {
                     id: `entry-${entryTimestamp}`,
                     rawTimestamp: entryTimestamp,
                     timestamp: new Date(entryTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                     text: newText,
                     isFinal: true,
-                    speakerIds: speakerId ? [speakerId] : [],
+                    speakerIds: [], // Intentionally empty. Will be filled by the assignment effect.
                 };
                 
                 if (liveTranslationEnabled) {
                     newEntry.isTranslating = true;
                     translateText(newEntry.text, translationLanguage)
-                        .then(translated => {
-                            setTranscriptEntries(prev => prev.map(e => 
-                                e.id === newEntry.id 
-                                ? { ...e, translatedText: translated, isTranslating: false } 
-                                : e
-                            ));
-                        })
+                        .then(translated => setTranscriptEntries(prev => prev.map(e => e.id === newEntry.id ? { ...e, translatedText: translated, isTranslating: false } : e)))
                         .catch(err => {
                             console.error("Live translation failed:", err);
-                            setTranscriptEntries(prev => prev.map(e => 
-                                e.id === newEntry.id 
-                                ? { ...e, translatedText: "[Translation Error]", isTranslating: false } 
-                                : e
-                            ));
+                            setTranscriptEntries(prev => prev.map(e => e.id === newEntry.id ? { ...e, translatedText: "[Translation Error]", isTranslating: false } : e));
                         });
                 }
                 setTranscriptEntries(prev => [...prev, newEntry]);
             }
         }
-    }, [finalTranscript, prevFinalTranscript, activeSpeaker, segments, liveTranslationEnabled, translationLanguage, isCloudMode]);
+    }, [finalTranscript, prevFinalTranscript, isCloudMode, liveTranslationEnabled, translationLanguage, addToast]);
+
+    // REVAMPED: This is now the SINGLE SOURCE OF TRUTH for speaker assignment in local mode.
+    useEffect(() => {
+        if (isCloudMode || segments.length === 0 || !startTimeRef.current) {
+            return;
+        }
+
+        const startTime = startTimeRef.current;
+
+        setTranscriptEntries(prevEntries => {
+            let hasChanges = false;
+            const updatedEntries = prevEntries.map(entry => {
+                const entryTimestampMs = entry.rawTimestamp - startTime;
+                
+                const matchingSegment = segments.find(
+                    seg => entryTimestampMs >= seg.startMs && entryTimestampMs <= seg.endMs
+                );
+
+                const currentSpeakerId = entry.speakerIds?.[0];
+                const newSpeakerId = matchingSegment?.speakerId;
+
+                if (newSpeakerId && currentSpeakerId !== newSpeakerId) {
+                    hasChanges = true;
+                    return { ...entry, speakerIds: [newSpeakerId] };
+                }
+                
+                // If an entry had a speaker but no longer falls in a segment, untag it.
+                if (!newSpeakerId && currentSpeakerId) {
+                    hasChanges = true;
+                    return { ...entry, speakerIds: [] };
+                }
+
+                return entry;
+            });
+
+            return hasChanges ? updatedEntries : prevEntries;
+        });
+    }, [segments, isCloudMode, transcriptEntries.length]); // Re-run when segments update or new entries are added.
 
     const clearTranscriptEntries = useCallback(() => {
         setTranscriptEntries([]);
@@ -181,19 +176,29 @@ const useTranscript = ({
     }, [resetDiarization]);
 
     const handleUpdateSpeakerLabel = useCallback((speakerId: SpeakerId, newLabel: string) => {
-        setSpeakerProfiles(prev => {
-            if (!prev[speakerId]) return prev;
-            return {
-                ...prev,
-                [speakerId]: { ...prev[speakerId], label: newLabel }
-            };
-        });
+        setSpeakerProfiles(prev => ({ ...prev, [speakerId]: { ...prev[speakerId], label: newLabel } }));
     }, []);
 
+    const handleUpdateEntryText = useCallback((entryId: string, newText: string) => {
+        setTranscriptEntries(prev => {
+            const newEntries = prev.map(entry => entry.id === entryId ? { ...entry, text: newText, translatedText: undefined, isTranslating: liveTranslationEnabled } : entry);
+            if (liveTranslationEnabled) {
+                const entryToTranslate = newEntries.find(e => e.id === entryId);
+                if (entryToTranslate) {
+                    translateText(entryToTranslate.text, translationLanguage)
+                        .then(translated => setTranscriptEntries(current => current.map(e => e.id === entryId ? { ...e, translatedText: translated, isTranslating: false } : e)))
+                        .catch(err => {
+                            console.error("Live translation on edit failed:", err);
+                            setTranscriptEntries(current => current.map(e => e.id === entryId ? { ...e, translatedText: "[Translation Error]", isTranslating: false } : e));
+                        });
+                }
+            }
+            return newEntries;
+        });
+    }, [liveTranslationEnabled, translationLanguage]);
+
     const handleReassignSpeakerForEntry = useCallback((entryId: string, newSpeakerId: SpeakerId) => {
-        setTranscriptEntries(prev => prev.map(entry => 
-            entry.id === entryId ? { ...entry, speakerIds: [newSpeakerId] } : entry
-        ));
+        setTranscriptEntries(prev => prev.map(entry => entry.id === entryId ? { ...entry, speakerIds: [newSpeakerId] } : entry));
     }, []);
 
     const handleTranslateEntry = useCallback(async (entryId: string, language: string) => {
@@ -210,17 +215,17 @@ const useTranscript = ({
         }
     }, [transcriptEntries, addToast]);
 
-
     return {
         transcriptEntries,
-        activeSpeaker,
         speakerProfiles,
         clearTranscriptEntries,
         startTimeRef,
-        segments,
+        segments, // Pass segments through for analytics
         handleUpdateSpeakerLabel,
         handleReassignSpeakerForEntry,
         handleTranslateEntry,
+        handleUpdateEntryText,
+        activeSpeaker,
     };
 };
 

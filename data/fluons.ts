@@ -1,0 +1,283 @@
+
+export const fluons = {
+    light: [
+      {
+        id: "amplification",
+        name: "Amplification",
+        type: "Energy Fluon",
+        symbol: "✧",
+        description:
+          "Magnifies the qualities or influences present in the reading.",
+        keywords: ["Boost", "Intensify", "Magnify", "Elevate"],
+      },
+      {
+        id: "momentum",
+        name: "Momentum",
+        type: "Energy Fluon",
+        symbol: "➳",
+        description: "Propels energy forward, providing a kinetic drive.",
+        keywords: ["Drive", "Acceleration", "Impulse", "Thrust"],
+      },
+      {
+        id: "expansion",
+        name: "Expansion",
+        type: "Energy Fluon",
+        symbol: "⊕",
+        description:
+          "Broadens the scope of influence, allowing opportunities to spread.",
+        keywords: ["Growth", "Spread", "Widen", "Amplify"],
+      },
+      {
+        id: "convergence",
+        name: "Convergence",
+        type: "Energy Fluon",
+        symbol: "⊗",
+        description:
+          "Draws separate energies together, creating a unified force.",
+        keywords: ["Unify", "Merge", "Coalesce", "Integrate"],
+      },
+      {
+        id: "liberation",
+        name: "Liberation",
+        type: "Energy Fluon",
+        symbol: "⋇",
+        description:
+          "Breaks free from constraints, unleashing hidden potential.",
+        keywords: ["Release", "Freedom", "Emancipation", "Unshackle"],
+      },
+      {
+        id: "attraction",
+        name: "Attraction",
+        type: "Energy Fluon",
+        symbol: "⥣",
+        description:
+          "Draws favorable energies and opportunities toward the querent.",
+        keywords: ["Magnetism", "Draw", "Lure", "Entice"],
+      },
+      {
+        id: "synergy",
+        name: "Synergy",
+        type: "Energy Fluon",
+        symbol: "∞",
+        description: "Enhances the collaborative effect of multiple energies.",
+        keywords: ["Harmony", "Fusion", "Unison", "Cooperative"],
+      },
+      {
+        id: "endurance",
+        name: "Endurance",
+        type: "Energy Fluon",
+        symbol: "⍟",
+        description: "Provides lasting strength and sustainability.",
+        keywords: ["Resilience", "Stamina", "Longevity", "Persistence"],
+      },
+    ],
+    shadow: [
+      {
+        id: "surge",
+        name: "Surge",
+        type: "Turbulence Fluon",
+        symbol: "⚡",
+        description: "A sudden, intense burst of energy.",
+        keywords: ["Burst", "Spike", "Eruption", "Outpouring"],
+      },
+      {
+        id: "chaos",
+        name: "Chaos",
+        type: "Turbulence Fluon",
+        symbol: "⚒",
+        description: "Embodies complete disorder and randomness.",
+        keywords: ["Disorder", "Mayhem", "Anarchy", "Pandemonium"],
+      },
+      {
+        id: "disruption",
+        name: "Disruption",
+        type: "Turbulence Fluon",
+        symbol: "⚠",
+        description:
+          "Interrupts the normal flow of energy, breaking established patterns.",
+        keywords: ["Interruption", "Disturbance", "Break", "Upheaval"],
+      },
+      {
+        id: "divergence",
+        name: "Divergence",
+        type: "Turbulence Fluon",
+        symbol: "⋔",
+        description:
+          "Splits energy into multiple, often conflicting directions.",
+        keywords: ["Split", "Bifurcate", "Deviate", "Separate"],
+      },
+      {
+        id: "reversal",
+        name: "Reversal",
+        type: "Turbulence Fluon",
+        symbol: "⥮",
+        description: "Inverts the current state or expected outcome.",
+        keywords: ["Inversion", "Flip", "Turnaround", "Overturn"],
+      },
+      {
+        id: "dissolution",
+        name: "Dissolution",
+        type: "Turbulence Fluon",
+        symbol: "⦰",
+        description:
+          "Breaks down established forms, leading to disintegration.",
+        keywords: ["Decay", "Disintegrate", "Crumble", "Erode"],
+      },
+      {
+        id: "concealment",
+        name: "Concealment",
+        type: "Turbulence Fluon",
+        symbol: "⨂",
+        description: "Masks or hides significant energy or information.",
+        keywords: ["Veil", "Obscure", "Mask", "Shroud"],
+      },
+      {
+        id: "escalation",
+        name: "Escalation",
+        type: "Turbulence Fluon",
+        symbol: "⤊",
+        description:
+          "Intensifies disruptive forces, leading to rapid increase in chaos.",
+        keywords: ["Intensify", "Amplify", "Heighten", "Accelerate"],
+      },
+    ],
+    balance: [
+      {
+        id: "flow",
+        name: "Flow",
+        type: "Balance Fluon",
+        symbol: "≈",
+        description: "Ensures smooth, continuous energy movement.",
+        keywords: ["Stream", "Glide", "Continuity", "Rhythm"],
+      },
+      {
+        id: "harmony",
+        name: "Harmony",
+        type: "Balance Fluon",
+        symbol: "☯",
+        description:
+          "Aligns conflicting energies to create peaceful coexistence.",
+        keywords: ["Accord", "Unity", "Concord", "Synchrony"],
+      },
+      {
+        id: "resonance",
+        name: "Resonance",
+        type: "Balance Fluon",
+        symbol: "≋",
+        description:
+          "Establishes deep, vibrational connections between energies.",
+        keywords: ["Echo", "Vibration", "Reverberation", "Symmetry"],
+      },
+      {
+        id: "synchronization",
+        name: "Synchronization",
+        type: "Balance Fluon",
+        symbol: "⟳",
+        description: "Coordinates the precise timing of energetic forces.",
+        keywords: ["Timing", "Alignment", "Coordination", "Calibration"],
+      },
+      {
+        id: "integration",
+        name: "Integration",
+        type: "Balance Fluon",
+        symbol: "⊹",
+        description: "Blends diverse energies into a cohesive, unified whole.",
+        keywords: ["Combine", "Merge", "Assimilate", "Fuse"],
+      },
+      {
+        id: "clarity",
+        name: "Clarity",
+        type: "Balance Fluon",
+        symbol: "◇",
+        description: "Dispels confusion, revealing clear insight.",
+        keywords: ["Lucidity", "Transparency", "Illumination", "Purity"],
+      },
+      {
+        id: "purification",
+        name: "Purification",
+        type: "Balance Fluon",
+        symbol: "⦿",
+        description: "Cleanses the energy field of negative influences.",
+        keywords: ["Cleanse", "Detoxify", "Refine", "Revitalize"],
+      },
+      {
+        id: "alignment",
+        name: "Alignment",
+        type: "Balance Fluon",
+        symbol: "⋮",
+        description:
+          "Calibrates energy so that all forces are in harmonious accord with the querent's true purpose.",
+        keywords: ["Adjust", "Coordinate", "Match", "Conform"],
+      },
+    ],
+    revelation: [
+      {
+        id: "reflection",
+        name: "Reflection",
+        type: "Revelation Fluon",
+        symbol: "⟲",
+        description: "Mirrors inner truths and past influences.",
+        keywords: ["Mirror", "Echo", "Reproduce", "Resonate"],
+      },
+      {
+        id: "transition",
+        name: "Transition",
+        type: "Revelation Fluon",
+        symbol: "⇝",
+        description: "Marks the passage from one state to another.",
+        keywords: ["Shift", "Change", "Passage", "Evolution"],
+      },
+      {
+        id: "mystery",
+        name: "Mystery",
+        type: "Revelation Fluon",
+        symbol: "?",
+        description:
+          "Encapsulates the allure of the unknown, inviting deeper exploration.",
+        keywords: ["Enigma", "Puzzle", "Riddle", "Secret"],
+      },
+      {
+        id: "emergence",
+        name: "Emergence",
+        type: "Revelation Fluon",
+        symbol: "⋱",
+        description:
+          "Gradually brings hidden potential and future possibilities into view.",
+        keywords: ["Unfolding", "Arising", "Surfacing", "Manifestation"],
+      },
+      {
+        id: "veil",
+        name: "Veil",
+        type: "Revelation Fluon",
+        symbol: "≡",
+        description:
+          "Represents the thin barrier between the known and the unknown.",
+        keywords: ["Curtain", "Shroud", "Mask", "Covering"],
+      },
+      {
+        id: "illumination",
+        name: "Illumination",
+        type: "Revelation Fluon",
+        symbol: "☼",
+        description: "Sparks sudden clarity and insight, dispelling darkness.",
+        keywords: ["Enlightenment", "Glow", "Radiance", "Epiphany"],
+      },
+      {
+        id: "potential",
+        name: "Potential",
+        type: "Revelation Fluon",
+        symbol: "⟡",
+        description: "Highlights untapped capabilities and opportunities.",
+        keywords: ["Capability", "Promise", "Opportunity", "Latency"],
+      },
+      {
+        id: "insight",
+        name: "Insight",
+        type: "Revelation Fluon",
+        symbol: "✧",
+        description:
+          "Provides deep, intuitive understanding beyond surface logic.",
+        keywords: ["Wisdom", "Perception", "Discernment", "Revelation"],
+      },
+    ],
+  };

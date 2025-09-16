@@ -1,11 +1,13 @@
 
 
+
 import { useState, useCallback, useEffect } from 'react';
 import { 
     generateSummary, 
     generateTopics, 
     generateActionItems, 
-    generateSnippets 
+    generateSnippets,
+    generateTitles
 } from '../services/geminiService';
 import { 
     type SummaryStyle, 
@@ -16,6 +18,7 @@ import {
     type TranscriptEntry,
     type DiarizationSegment,
     type SpeechAnalytics,
+    type GeneratedTitle,
 } from '../types';
 import { type ToastType } from '../components/Toast';
 import { FILLER_WORDS } from '../constants';
@@ -47,10 +50,12 @@ const useAnalytics = ({
     const [actionItems, setActionItems] = useState<ActionItem[]>([]);
     const [snippets, setSnippets] = useState<Snippet[]>([]);
     const [topics, setTopics] = useState<string[]>([]);
+    const [titles, setTitles] = useState<GeneratedTitle[]>([]);
     const [speechAnalytics, setSpeechAnalytics] = useState<Partial<SpeechAnalytics>>({});
 
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isSummarizing, setIsSummarizing] = useState(false);
+    const [isGeneratingTitles, setIsGeneratingTitles] = useState(false);
     
     const avatarEmotion = useEmotionDetection({
         isListening,
@@ -152,6 +157,28 @@ const useAnalytics = ({
         }
     }, [addToast]);
     
+    const handleGenerateTitles = useCallback(async (transcript: string) => {
+        if (transcript.trim().length < 50) {
+            addToast('Not enough content', 'Please speak more before generating titles.', 'warning');
+            return;
+        }
+        setIsGeneratingTitles(true);
+        addToast('Generating Titles...', 'Asking Gemini for creative titles.', 'processing');
+        try {
+            const titlesResult = await generateTitles(transcript);
+            if (titlesResult.length > 0) {
+                setTitles(titlesResult.map(t => ({ id: self.crypto.randomUUID(), text: t })));
+                addToast('Titles Generated', 'Suggestions are ready in the Analytics panel.', 'success');
+            } else {
+                addToast('No Titles Found', 'Could not generate titles for this transcript.', 'warning');
+            }
+        } catch (e) {
+            addToast('Title Generation Failed', 'An error occurred while generating titles.', 'error');
+        } finally {
+            setIsGeneratingTitles(false);
+        }
+    }, [addToast]);
+
     const generateAllAnalytics = useCallback(async (transcript: string, speakerProfiles: Record<SpeakerId, SpeakerProfile>) => {
         if (transcript.trim().length < 20) return;
         
@@ -191,6 +218,7 @@ const useAnalytics = ({
         setActionItems([]);
         setSnippets([]);
         setTopics([]);
+        setTitles([]);
         setSpeechAnalytics({});
     }, []);
 
@@ -200,13 +228,16 @@ const useAnalytics = ({
         actionItems,
         snippets,
         topics,
+        titles,
         isAnalyzing,
         isSummarizing,
+        isGeneratingTitles,
         avatarEmotion,
         speechAnalytics,
         handleSummarize,
         generateAllAnalytics,
         clearAnalytics,
+        handleGenerateTitles,
     };
 };
 

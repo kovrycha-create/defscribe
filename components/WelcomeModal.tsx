@@ -64,6 +64,9 @@ const WelcomeModal: React.FC<WelcomeModalProps> = ({ isOpen, onClose, onStartTou
             <FeatureCard icon="fa-globe" title="Global Language Support">
               Choose from a wide range of supported languages in the Settings panel for accurate transcription. Live translation features are also available to bridge communication gaps.
             </FeatureCard>
+            <FeatureCard icon="fa-wand-magic-sparkles" title="Meet Ymzo, Your Arcane Guide">
+              When you need clarity, click the ✨ button for a 'micro-nudge' from your AI companion, designed to help you recenter and find your flow.
+            </FeatureCard>
           </div>
         )}
 
