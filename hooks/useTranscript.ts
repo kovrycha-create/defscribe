@@ -40,8 +40,8 @@ const useTranscript = ({
     const prevFinalTranscript = usePrevious(finalTranscript);
     
     // FIX: Get segments and the live active speaker from the diarization hook.
-    // Pass diarizationSettings through directly so local diarization can run when the UI toggle is enabled.
-    const { segments, activeSpeaker, resetDiarization } = useDiarization(
+    // Also receive speakerStats and detectedSpeakersCount for analytics UI.
+    const { segments, activeSpeaker, resetDiarization, speakerStats, detectedSpeakersCount } = useDiarization(
         stream,
         diarizationSettings,
         startTimeRef.current
@@ -314,6 +314,8 @@ const useTranscript = ({
         handleUpdateEntryText,
         activeSpeaker,
         loadTranscriptData,
+        speakerStats,
+        detectedSpeakersCount
     };
 };
 

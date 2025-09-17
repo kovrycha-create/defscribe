@@ -15,6 +15,20 @@ View your app in AI Studio: https://ai.studio/apps/drive/18d2cQilTZe4To7yhPbx4h6
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Create a local env file `.env.local` and set your keys there (do NOT commit this file):
+
+- `VITE_GEMINI_API_KEY` — your Gemini API key (if using Gemini)
+- `VITE_OPENAI_API_KEY` — your OpenAI API key (if using OpenAI)
 3. Run the app:
    `npm run dev`
+
+Security note (OpenAI keys)
+---------------------------------
+- By default, the app blocks the OpenAI client from running in a browser environment to avoid exposing your secret API key to users.
+- For local development only, you may opt into running the OpenAI client in the browser by adding this to your `.env.local`:
+
+```
+VITE_ALLOW_OPENAI_IN_BROWSER=true
+```
+
+Only use the opt-in flag for quick local testing. For production, proxy OpenAI requests through a server-side endpoint so secrets remain on the server. See OpenAI's guide: https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety

@@ -41,7 +41,18 @@ interface ActionsMenuProps {
     onClose: () => void;
 }
 
-const ActionsMenu: React.FC<ActionsMenuProps> = ({ entry, speakerProfiles, onTranslate, onReassign, onReframe, onClose }) => {
+interface ActionsMenuProps {
+    entry: TranscriptEntry;
+    speakerProfiles: Record<SpeakerId, SpeakerProfile>;
+    onTranslate: (entryId: string) => void;
+    onReassign: (entryId: string, newSpeakerId: SpeakerId) => void;
+    onReframe: (entryId: string) => void;
+    onClose: () => void;
+    // displayText is the resolved text as shown in the UI (may be censored or original)
+    displayText: string;
+}
+
+const ActionsMenu: React.FC<ActionsMenuProps> = ({ entry, speakerProfiles, onTranslate, onReassign, onReframe, onClose, displayText }) => {
     const menuRef = useRef<HTMLDivElement>(null);
     const [copied, setCopied] = useState(false);
 
@@ -63,7 +74,7 @@ const ActionsMenu: React.FC<ActionsMenuProps> = ({ entry, speakerProfiles, onTra
     };
     
     const handleCopy = () => {
-        navigator.clipboard.writeText(entry.text).then(() => {
+        navigator.clipboard.writeText(displayText).then(() => {
             setCopied(true);
             setTimeout(() => {
                 onClose();
@@ -131,12 +142,16 @@ interface TranscriptEntryComponentProps {
     onReframeEntry: (entryId: string) => void;
     onOpenCodex: (tab: string, entryId: string) => void;
     censorLanguage: boolean;
+    // The text as displayed in the UI (may be censored or original)
+    displayText?: string;
+    // optional local save hook to inform parent about saved text (so preserved originals can be updated)
+    onLocalSave?: (entryId: string, newText: string) => void;
 }
 
 const TranscriptEntryComponent: React.FC<TranscriptEntryComponentProps> = ({
     entry, speakerProfiles, showTimestamps, diarizationEnabled, onSpeakerTagClick,
     renderHighlightedText, onTranslateEntry, onReassignSpeaker, onUpdateEntryText, transcriptTextSize,
-    reframingResult, onReframeEntry, onOpenCodex, censorLanguage
+    reframingResult, onReframeEntry, onOpenCodex, censorLanguage, displayText, onLocalSave
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(entry.text);
@@ -158,6 +173,7 @@ const TranscriptEntryComponent: React.FC<TranscriptEntryComponentProps> = ({
     const handleSave = () => {
         if (editText.trim() && editText.trim() !== entry.text) {
             onUpdateEntryText(entry.id, editText.trim());
+            if (typeof onLocalSave === 'function') onLocalSave(entry.id, editText.trim());
         }
         setIsEditing(false);
     };
@@ -184,7 +200,7 @@ const TranscriptEntryComponent: React.FC<TranscriptEntryComponentProps> = ({
         textarea.style.height = `${textarea.scrollHeight}px`;
     };
 
-    const textToRender = censorProfanity(entry.text, censorLanguage);
+    const textToRender = displayText ?? censorProfanity(entry.text, censorLanguage);
 
     return (
         <div className={`relative flex flex-col sm:flex-row items-start gap-x-3 gap-y-1 p-2 rounded-lg hover:bg-slate-800/50 transition-colors fade-in-entry pb-4 group ${activeMenuEntryId === entry.id ? 'z-30' : ''}`}>
@@ -252,7 +268,7 @@ const TranscriptEntryComponent: React.FC<TranscriptEntryComponentProps> = ({
                 </Tooltip>
             </div>
             {activeMenuEntryId === entry.id && (
-                <ActionsMenu entry={entry} speakerProfiles={speakerProfiles} onTranslate={onTranslateEntry} onReassign={onReassignSpeaker} onReframe={onReframeEntry} onClose={() => setActiveMenuEntryId(null)} />
+                <ActionsMenu entry={entry} speakerProfiles={speakerProfiles} onTranslate={onTranslateEntry} onReassign={onReassignSpeaker} onReframe={onReframeEntry} onClose={() => setActiveMenuEntryId(null)} displayText={textToRender} />
             )}
             <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-0 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/80 to-transparent transition-all duration-500 group-hover:w-[95%] shadow-[0_0_8px_var(--color-primary)]"></div>
         </div>
@@ -297,6 +313,77 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
     const [displayedLiveSpeaker, setDisplayedLiveSpeaker] = useState<SpeakerId | null>(activeSpeaker);
     const lastSeenRef = useRef<SpeakerId | null>(activeSpeaker);
 
+            // Preserve original (uncensored) texts locally so toggling censorship restores originals.
+            // This is intentionally kept local to avoid changing upstream data shapes here.
+            const preservedOriginalsRef = useRef<Record<string, string>>({});
+
+            // Helper to persist preserved originals to localStorage and keep ref in sync.
+            const savePreservedOriginal = (entryId: string, text: string) => {
+                preservedOriginalsRef.current[entryId] = text;
+                try {
+                    // Persist the whole map as the one-off migration source
+                    window.localStorage.setItem('defscribe_original_texts', JSON.stringify(preservedOriginalsRef.current));
+                } catch (err) {
+                    console.debug('[TranscriptDisplay] failed to persist preserved original', err);
+                }
+            };
+
+        // Helper to detect whether censorship would actually change a text
+        const textWouldChangeByCensoring = (text: string) => {
+            return censorProfanity(text, true) !== text;
+        };
+
+        // On mount: one-off migration to restore original texts from recent sessions (if any)
+        useEffect(() => {
+            try {
+                const raw = window.localStorage.getItem('defscribe_original_texts');
+                        if (raw) {
+                            const parsed = JSON.parse(raw) as Record<string, string>;
+                            preservedOriginalsRef.current = { ...preservedOriginalsRef.current, ...parsed };
+                            // remove after restoring (one-off)
+                            window.localStorage.removeItem('defscribe_original_texts');
+                            console.debug('[TranscriptDisplay] Restored preserved originals from localStorage, then cleared migration key.');
+                        }
+
+                        // Also adopt any originalText fields that might exist on entries (newer sessions)
+                        entries.forEach(e => {
+                            const maybeOriginal = (e as any).originalText;
+                            if (typeof maybeOriginal === 'string' && maybeOriginal.length > 0) {
+                                savePreservedOriginal(e.id, maybeOriginal);
+                            }
+                        });
+            } catch (err) {
+                console.debug('[TranscriptDisplay] migration restore failed', err);
+            }
+            // run only once on mount
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, []);
+
+        // When censorship is enabled, capture originals for entries that would be changed.
+        useEffect(() => {
+            if (!censorLanguage) return;
+                    entries.forEach(e => {
+                        if (!preservedOriginalsRef.current[e.id] && textWouldChangeByCensoring(e.text)) {
+                            savePreservedOriginal(e.id, e.text);
+                        }
+                    });
+        }, [censorLanguage, entries]);
+
+        // Helper to resolve what text to render for an entry given censorship toggle and preserved originals.
+        const resolvedTextForEntry = (entry: TranscriptEntry) => {
+            // prefer preserved original if present and censorship disabled
+            const preserved = preservedOriginalsRef.current[entry.id];
+            if (!censorLanguage && preserved) {
+                return preserved;
+            }
+            // if censorship enabled and we have preserved original, censor that (so we never lose the original)
+            if (censorLanguage && preserved) {
+                return censorProfanity(preserved, true);
+            }
+            // fallback: use entry.text (may already be censored or original)
+            return censorProfanity(entry.text, censorLanguage);
+        };
+
     useEffect(() => {
         if (activeSpeaker) {
             lastSeenRef.current = activeSpeaker;
@@ -338,29 +425,44 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
     return <>{nodes}</>;
   }, [searchQuery, highlightedTopic]);
 
-  const liveTextToRender = censorProfanity(liveText, censorLanguage);
+    // For live text, if we previously preserved an original for a "live" placeholder id use it;
+    // otherwise apply the same censorship rules as entries (no persistent storage used for ephemeral live text).
+    const liveTextToRender = censorProfanity(liveText, censorLanguage);
 
     return (
         <div ref={containerRef} className="h-full overflow-y-auto pr-2 pb-4">
-      {entries.map((entry) => (
-        <TranscriptEntryComponent
-          key={entry.id}
-          entry={entry}
-          speakerProfiles={speakerProfiles}
-          showTimestamps={showTimestamps}
-          diarizationEnabled={diarizationEnabled}
-          onSpeakerTagClick={onSpeakerTagClick}
-          renderHighlightedText={renderHighlightedText}
-          onTranslateEntry={onTranslateEntry}
-          onReassignSpeaker={onReassignSpeaker}
-          onUpdateEntryText={onUpdateEntryText}
-          transcriptTextSize={transcriptTextSize}
-          reframingResult={reframingResults[entry.id]}
-          onReframeEntry={onReframeEntry}
-          onOpenCodex={onOpenCodex}
-          censorLanguage={censorLanguage}
-        />
-      ))}
+            {entries.map((entry) => {
+                const displayText = resolvedTextForEntry(entry);
+                return (
+                                <TranscriptEntryComponent
+                        key={entry.id}
+                        entry={entry}
+                        speakerProfiles={speakerProfiles}
+                        showTimestamps={showTimestamps}
+                        diarizationEnabled={diarizationEnabled}
+                        onSpeakerTagClick={onSpeakerTagClick}
+                        renderHighlightedText={renderHighlightedText}
+                        onTranslateEntry={onTranslateEntry}
+                        onReassignSpeaker={onReassignSpeaker}
+                        // wrap update so preserved originals stay in sync when the user edits text
+                                                onUpdateEntryText={(entryId, newText) => {
+                                                    // update preserved original to the newText when the user edits, keep persisted copy in sync
+                                                    savePreservedOriginal(entryId, newText);
+                                                    onUpdateEntryText(entryId, newText);
+                                                }}
+                                                onLocalSave={(entryId, newText) => {
+                                                    savePreservedOriginal(entryId, newText);
+                                                }}
+                        transcriptTextSize={transcriptTextSize}
+                        reframingResult={reframingResults[entry.id]}
+                        onReframeEntry={onReframeEntry}
+                        onOpenCodex={onOpenCodex}
+                        censorLanguage={censorLanguage}
+                        // pass computed displayText for copy and menu actions
+                        {...{ displayText }}
+                    />
+                );
+            })}
       
       {entries.length === 0 && !isListening && (
         <div className="relative overflow-hidden p-2 text-center">

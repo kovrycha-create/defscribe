@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { type Chat } from '@google/genai';
 
 // --- Components ---
 import ControlPanel from './components/panels/ControlPanel';
 import MainContentPanel from './components/panels/MainContentPanel';
 import AnalyticsPanel from './components/panels/AnalyticsPanel';
+import SpeakerAnalyticsPanel from './components/panels/SpeakerAnalyticsPanel';
 import BottomNav from './components/BottomNav';
 import ImmersiveMode from './components/ImmersiveMode';
 import WelcomeModal from './components/WelcomeModal';
@@ -59,20 +59,27 @@ const YmzoOracle: React.FC<{
     useEffect(() => {
         const newMessages = messages.map(msg => ({ ...msg, text: '' }));
         setDisplayedMessages(newMessages);
+    // Start typing intervals for each message and ensure we clear them on cleanup.
+    const intervalIds: number[] = [];
+    messages.forEach((msg, msgIndex) => {
+      if (!msg || !msg.text) return;
+      let i = 0;
+      const id = window.setInterval(() => {
+        setDisplayedMessages(prev => prev.map((prevMsg, index) =>
+          index === msgIndex ? { ...prevMsg, text: prevMsg.text + (msg.text.charAt(i) || '') } : prevMsg
+        ));
+        i++;
+        if (i >= msg.text.length) {
+          clearInterval(id);
+        }
+      }, 25); // Typing speed
+      intervalIds.push(id);
+    });
 
-        messages.forEach((msg, msgIndex) => {
-            let i = 0;
-            const typingInterval = setInterval(() => {
-                if (i < msg.text.length) {
-                    setDisplayedMessages(prev => prev.map((prevMsg, index) => 
-                        index === msgIndex ? { ...prevMsg, text: prevMsg.text + msg.text.charAt(i) } : prevMsg
-                    ));
-                    i++;
-                } else {
-                    clearInterval(typingInterval);
-                }
-            }, 25); // Typing speed
-        });
+    return () => {
+      // Clear any pending intervals when messages change or component unmounts
+      intervalIds.forEach(id => clearInterval(id));
+    };
     }, [messages]);
     
     const allKeywords = useMemo(() => {
@@ -179,7 +186,7 @@ const CosmicCodexModal: React.FC<{ onClose: () => void; initialTab?: string; ini
     const filteredFluons = allFluons.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()) || f.type.toLowerCase().includes(searchTerm.toLowerCase()));
     const filteredTrinkets = trinkets.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
     // FIX: Add a type assertion to card to allow optional 'image' property.
-    const allCards = Object.entries(cards).map(([id, card]) => ({ id, name: card.title, symbol: '🃏', description: card.primary, image: (card as { image?: string }).image, type: 'Major Arcana' }));
+  const allCards = Object.entries(cards).map(([id, card]) => ({ id, name: card.title, symbol: '🃏', description: card.primary, image: (card as { image?: string }).image, type: 'Card' }));
     const filteredCards = allCards.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
     
     return (
@@ -226,9 +233,9 @@ const CosmicCodexModal: React.FC<{ onClose: () => void; initialTab?: string; ini
 // Reason: To implement the new Ymzo chat feature without adding new files.
 // ===================================================================================
 const YmzoChatModal: React.FC<{
-    isOpen: boolean;
-    onClose: () => void;
-    chatInstance: Chat | null;
+  isOpen: boolean;
+  onClose: () => void;
+  chatInstance: any | null;
 }> = ({ isOpen, onClose, chatInstance }) => {
     const [messages, setMessages] = useState<ChatMessage[]>([
         { id: 'ymzo-intro', role: 'model', text: "The threads are still. Ask." }
@@ -257,26 +264,25 @@ const YmzoChatModal: React.FC<{
         const modelMessageId = `model-${Date.now()}`;
         setMessages(prev => [...prev, { id: modelMessageId, role: 'model', text: '', isLoading: true }]);
 
-        try {
-            const responseStream = await chatInstance.sendMessageStream({ message: input });
+    try {
+      // The Ymzo chat wrapper exposes a `generate(userInput)` method that
+      // returns the full text response (no streaming). Call that instead
+      // of the non-existent `sendMessageStream`.
+      const text = await chatInstance.generate(input);
 
-            let fullText = '';
-            for await (const chunk of responseStream) {
-                fullText += chunk.text;
-                setMessages(prev =>
-                    prev.map(msg =>
-                        msg.id === modelMessageId ? { ...msg, text: fullText } : msg
-                    )
-                );
-            }
-          
-            setMessages(prev =>
-                prev.map(msg =>
-                    msg.id === modelMessageId ? { ...msg, isLoading: false } : msg
-                )
-            );
+      setMessages(prev =>
+        prev.map(msg =>
+          msg.id === modelMessageId ? { ...msg, text } : msg
+        )
+      );
 
-        } catch (error) {
+      setMessages(prev =>
+        prev.map(msg =>
+          msg.id === modelMessageId ? { ...msg, isLoading: false } : msg
+        )
+      );
+
+    } catch (error) {
             console.error("Ymzo Chat error:", error);
             const errorMessage = error instanceof Error ? error.message : "The currents are unclear at this moment.";
             setMessages(prev =>
@@ -349,6 +355,7 @@ const App: React.FC = () => {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [activeMobileTab, setActiveMobileTab] = useState<'controls' | 'transcript' | 'analytics'>('transcript');
   const [highlightedTopic, setHighlightedTopic] = useState<string | null>(null);
+  const [rightPanelTab, setRightPanelTab] = useState<'analytics' | 'speakers'>('analytics');
   
   // --- Modals & Popups ---
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem('defscribe-hasWelcomed'));
@@ -358,7 +365,7 @@ const App: React.FC = () => {
   const [showCodex, setShowCodex] = useState(false);
   const [codexInitial, setCodexInitial] = useState<{tab?: string; entry?: string}>({});
   const [showYmzoChat, setShowYmzoChat] = useState(false);
-  const [ymzoChatInstance, setYmzoChatInstance] = useState<Chat | null>(null);
+  const [ymzoChatInstance, setYmzoChatInstance] = useState<any | null>(null);
 
   // --- Core Hooks ---
   const settings = useAppSettings();
@@ -372,7 +379,7 @@ const App: React.FC = () => {
     isRecordingEnabled: settings.isRecordingEnabled,
   });
 
-  const { transcriptEntries, speakerProfiles, clearTranscriptEntries, handleUpdateSpeakerLabel, handleUpdateEntryText, segments, activeSpeaker, handleReassignSpeakerForEntry, handleTranslateEntry, loadTranscriptData } = useTranscript({
+  const { transcriptEntries, speakerProfiles, clearTranscriptEntries, handleUpdateSpeakerLabel, handleUpdateEntryText, segments, activeSpeaker, handleReassignSpeakerForEntry, handleTranslateEntry, loadTranscriptData, speakerStats } = useTranscript({
     finalTranscript,
     diarizationSettings: settings.diarizationSettings,
     addToast,
@@ -679,7 +686,13 @@ const App: React.FC = () => {
                 />
               </div>
               <div className={`flex-1 min-h-0 ${activeMobileTab === 'analytics' ? '' : 'hidden'}`} data-tour-id="analytics-panel">
-                <AnalyticsPanel 
+                <div className="bg-transparent">
+                  <div className="flex border-b border-slate-700">
+                    <button onClick={() => setRightPanelTab('analytics')} className={`px-4 py-2 text-sm ${rightPanelTab === 'analytics' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>Analytics</button>
+                    <button onClick={() => setRightPanelTab('speakers')} className={`px-4 py-2 text-sm ${rightPanelTab === 'speakers' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>Speakers</button>
+                  </div>
+                  {rightPanelTab === 'analytics' ? (
+                    <AnalyticsPanel 
                     isSummarizing={analytics.isSummarizing}
                     summary={analytics.summary}
                     summaryStyle={analytics.summaryStyle}
@@ -716,7 +729,17 @@ const App: React.FC = () => {
                     setAuraParticleDensity={settings.setAuraParticleDensity}
                     auraCustomColors={settings.auraCustomColors}
                     setAuraCustomColors={settings.setAuraCustomColors}
-                />
+                    />
+                  ) : (
+                    <SpeakerAnalyticsPanel
+                      segments={segments}
+                      speakerProfiles={speakerProfiles}
+                      speakerStats={speakerStats || {}}
+                      isListening={isListening}
+                      recordingDuration={recordingDuration}
+                    />
+                  )}
+                </div>
               </div>
               <BottomNav activeTab={activeMobileTab} onTabChange={setActiveMobileTab} actionItemsCount={analytics.actionItems.length} snippetsCount={analytics.snippets.length} />
             </>
@@ -818,7 +841,13 @@ const App: React.FC = () => {
                 <CollapsedPanelTab title="Analytics" icon="fa-chart-pie" onClick={() => handlePanelCollapse('isRightPanelCollapsed')} />
               ) : (
                 <div style={{ width: `${settings.panelLayout.rightPanelWidth}px` }} className="flex-shrink-0 h-full" data-tour-id="analytics-panel">
-                  <AnalyticsPanel
+                  <div className="h-full flex flex-col">
+                    <div className="flex border-b border-slate-700">
+                      <button onClick={() => setRightPanelTab('analytics')} className={`px-4 py-2 text-sm ${rightPanelTab === 'analytics' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>Analytics</button>
+                      <button onClick={() => setRightPanelTab('speakers')} className={`px-4 py-2 text-sm ${rightPanelTab === 'speakers' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>Speakers</button>
+                    </div>
+                    {rightPanelTab === 'analytics' ? (
+                      <AnalyticsPanel
                       isSummarizing={analytics.isSummarizing}
                       summary={analytics.summary}
                       summaryStyle={analytics.summaryStyle}
@@ -855,7 +884,17 @@ const App: React.FC = () => {
                       setAuraParticleDensity={settings.setAuraParticleDensity}
                       auraCustomColors={settings.auraCustomColors}
                       setAuraCustomColors={settings.setAuraCustomColors}
-                  />
+                      />
+                    ) : (
+                      <SpeakerAnalyticsPanel
+                        segments={segments}
+                        speakerProfiles={speakerProfiles}
+                        speakerStats={speakerStats || {}}
+                        isListening={isListening}
+                        recordingDuration={recordingDuration}
+                      />
+                    )}
+                  </div>
                 </div>
               )}
             </>

@@ -1,10 +1,11 @@
 
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { type ChatMessage } from '../types';
 import Tooltip from './Tooltip';
 import { translateText } from '../services/geminiService';
+import { getAIConfig } from '../config/aiConfig';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { Sanitizer } from '../utils/sanitizer';
 
@@ -113,46 +114,37 @@ const TranscriptChat: React.FC<TranscriptChatProps> = ({ transcript, onClose, tr
     const modelMessageId = `model-${Date.now()}`;
     setMessages(prev => [...prev, { id: modelMessageId, role: 'model', text: '', isLoading: true }]);
 
-    try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const chat = ai.chats.create({
-            model: 'gemini-2.5-flash',
-            config: {
-                systemInstruction: `You are a helpful assistant analyzing a meeting transcript. The full transcript is provided below. Answer the user's questions based *only* on the information within this transcript. Do not make up information. If the answer is not in the transcript, say so.
-                --- TRANSCRIPT START ---
-                ${transcript}
-                --- TRANSCRIPT END ---`,
-            },
-            history: messages
-                .filter(m => (m.role === 'user' || (m.role === 'model' && !m.isLoading && m.text)))
-                .map(msg => ({
-                    role: msg.role,
-                    parts: [{ text: msg.text }]
-                }))
-        });
+  try {
+  // Use central AI config to determine provider and apiKey
+  const { provider, apiKey } = getAIConfig();
+    if (provider !== 'gemini') throw new Error('Transcript chat requires the Gemini provider to be selected.');
 
-        const responseStream = await chat.sendMessageStream({ message: input });
+    // Build a prompt and call the Generative Model directly (no streaming).
+    const ai = new GoogleGenerativeAI(apiKey);
+    const model = ai.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: {
+        temperature: 0.0,
+        topP: 0.9,
+      },
+    });
 
-        let fullText = '';
-        let streamingStarted = false;
-        for await (const chunk of responseStream) {
-            if (!streamingStarted) {
-                if (!autoScroll) setNewContent(true);
-                streamingStarted = true;
-            }
-            fullText += chunk.text;
-            setMessages(prev =>
-                prev.map(msg =>
-                    msg.id === modelMessageId ? { ...msg, text: fullText } : msg
-                )
-            );
-        }
-      
-        setMessages(prev =>
-            prev.map(msg =>
-                msg.id === modelMessageId ? { ...msg, isLoading: false } : msg
-            )
-        );
+    const promptText = `You are a helpful assistant analyzing a meeting transcript. The full transcript is provided below. Answer the user's questions based *only* on the information within this transcript. Do not make up information. If the answer is not in the transcript, say so.
+--- TRANSCRIPT START ---\n${transcript}\n--- TRANSCRIPT END ---\nUser Question: ${input}`;
+
+    const response = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: promptText }] }],
+    });
+
+    const result = await response.response;
+    const fullText = await result.text();
+
+    if (!autoScroll) setNewContent(true);
+    setMessages(prev =>
+      prev.map(msg => (msg.id === modelMessageId ? { ...msg, text: fullText } : msg))
+    );
+
+    setMessages(prev => prev.map(msg => (msg.id === modelMessageId ? { ...msg, isLoading: false } : msg)));
 
     } catch (error) {
         console.error("Chat error:", error);

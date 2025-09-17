@@ -1,18 +1,15 @@
-
-import { GoogleGenAI, GenerateContentResponse, Chat } from '@google/genai';
-// FIX: Added AuraData type for the new generateAuraData function.
-import { type SummaryStyle, type Emotion, type ActionItem, type Snippet, type TopicSegment, type CosmicReading, type AuraData } from '../types';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { callOpenAI } from './openaiService';
+import type { SummaryStyle, Emotion, ActionItem, Snippet, TopicSegment, CosmicReading, AuraData } from '../types';
 import { fluons } from '../data/fluons';
 import { cards } from '../data/cards';
 import { strands, chords, specialJokers } from '../data/strands';
 import { trinkets } from '../data/trinkets';
 import { CONTINUUM_LORE, YMZO_LORE, GLOSSARY_AND_ADDENDA_LORE } from '../data/canon';
 import { strandRelations } from '../data/strandRelations';
+import { getAIConfig } from '../config/aiConfig';
 
-
-const model = 'gemini-2.5-flash';
-
-class GeminiAPIError extends Error {
+export class GeminiAPIError extends Error {
     constructor(
         message: string,
         public code?: string,
@@ -25,44 +22,80 @@ class GeminiAPIError extends Error {
 }
 
 // --- Helper for Gemini API calls ---
-async function callGemini<T>(
+export async function callGemini<T>(
     prompt: string | { parts: any[] },
     schema?: any,
     options: { retries?: number, timeout?: number } = {}
 ): Promise<T> {
     const { retries = 3, timeout = 30000 } = options;
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const config = schema ? { responseMimeType: "application/json", responseSchema: schema } : {};
-    
+    const config = getAIConfig();
+
+    const generationConfig = schema ? { responseMimeType: "application/json", responseSchema: schema } : {};
+
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < retries; attempt++) {
         try {
-            const generatePromise = ai.models.generateContent({
-                model,
-                contents: prompt,
-                config,
-            });
+            if (config.provider === 'gemini') {
+                const genAI = new GoogleGenerativeAI(config.apiKey);
+                const model = genAI.getGenerativeModel({
+                    model: config.model,
+                    generationConfig: generationConfig
+                });
 
-            const timeoutPromise = new Promise<GenerateContentResponse>((_, reject) =>
-                setTimeout(() => reject(new GeminiAPIError(`API call timed out after ${timeout}ms`, 'TIMEOUT', 408, true)), timeout)
-            );
+                const generatePromise = model.generateContent({
+                    contents: [{ role: 'user', parts: typeof prompt === 'string' ? [{ text: prompt }] : prompt.parts }],
+                });
 
-            const response = await Promise.race([generatePromise, timeoutPromise]);
-            
-            const text = response.text;
-            if (schema) {
+                const timeoutPromise = new Promise<Awaited<ReturnType<typeof model.generateContent>>>((_, reject) =>
+                    setTimeout(() => reject(new GeminiAPIError(`API call timed out after ${timeout}ms`, 'TIMEOUT', 408, true)), timeout)
+                );
+
+                const response = await Promise.race([generatePromise, timeoutPromise]);
+
+                const result = await response.response;
+                const text = result.text();
+                if (schema) {
+                    try {
+                        const jsonText = (text || '').trim().replace(/^```json/i, '').replace(/```$/, '').trim();
+                        if (!jsonText) throw new Error("Empty JSON response from AI.");
+                        return JSON.parse(jsonText);
+                    } catch (parseError) {
+                        const error = parseError as Error;
+                        console.error('Failed to parse Gemini JSON response:', text, error);
+                        throw new GeminiAPIError(`Failed to parse AI response: ${error.message}`, 'PARSE_ERROR', 500, true);
+                    }
+                } else {
+                    return { text } as T;
+                }
+            } else if (config.provider === 'openai') {
+                // Fallback: map Gemini-style calls to OpenAI
+                // Build a prompt string from the provided prompt/parts
+                let promptText = '';
+                if (typeof prompt === 'string') {
+                    promptText = prompt;
+                } else if (Array.isArray(prompt.parts)) {
+                    promptText = prompt.parts.map((p: any) => p.text || '').join('\n');
+                }
+
+                // Use callOpenAI, which supports schema-driven JSON output
                 try {
-                    const jsonText = (text || '').trim().replace(/^```json/i, '').replace(/```$/, '').trim();
-                    if (!jsonText) throw new Error("Empty JSON response from AI.");
-                    return JSON.parse(jsonText);
-                } catch (parseError) {
-                    const error = parseError as Error;
-                    console.error('Failed to parse Gemini JSON response:', text, error);
-                    throw new GeminiAPIError(`Failed to parse AI response: ${error.message}`, 'PARSE_ERROR', 500, true);
+                    const result = await callOpenAI<T>(promptText, schema, options);
+                    console.debug('[callGemini] OpenAI fallback result:', { ok: !!result, hasText: (result && (result as any).text ? true : false) });
+                    return result;
+                } catch (err: any) {
+                    // Normalize OpenAI errors into GeminiAPIError so callers get consistent error shape
+                    console.error('[callGemini] OpenAI fallback error:', {
+                        message: err?.message,
+                        name: err?.name,
+                        status: err?.status || err?.statusCode || null,
+                        // do not log tokens/keys/response bodies that may contain PII
+                    });
+                    const e = err as Error;
+                    throw new GeminiAPIError(e.message, 'OPENAI_FALLBACK_ERROR', err?.status || 500, true);
                 }
             } else {
-                return { text } as T;
+                throw new GeminiAPIError('Gemini provider is not configured', 'CONFIG_ERROR', 500, false);
             }
         } catch (error) {
             lastError = error as Error;
@@ -76,7 +109,7 @@ async function callGemini<T>(
             }
         }
     }
-    
+
     console.error("Gemini call failed after all retries.", lastError);
     if (lastError instanceof GeminiAPIError) throw lastError;
     throw new GeminiAPIError(lastError?.message || 'Max retries exceeded', 'MAX_RETRIES', 500, false);
@@ -537,61 +570,17 @@ ${JSON.stringify(Object.keys(cards).reduce((acc, key) => ({ ...acc, [key]: { tit
 ---
 `;
 
-  const userContent = `RUNTIME INPUT:\n${JSON.stringify(inputs, null, 2)}`;
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const userContent = `RUNTIME INPUT:\n${JSON.stringify(inputs, null, 2)}`;
 
-  const mainResponsePromise = ai.models.generateContent({
-    model,
-    contents: userContent,
-    config: {
-      systemInstruction: mainSystemPrompt.replace('<REFERENCE_TEXT>', referenceText),
-      responseMimeType: 'application/json',
-      responseSchema: {
-                type: 'object',
-                properties: { speaker: { type: 'string' }, text: { type: 'string' } },
-                required: ['speaker', 'text']
-            },
-      temperature: 0.7,
-      topK: 40,
-      topP: 0.95,
-    }
-  });
+            const mainPrompt = `${mainSystemPrompt}\n\nREFERENCE:\n${referenceText}\n\n${userContent}`;
+            const promises = [callGemini<{ speaker: string; text: string }>(mainPrompt, { type: 'object', properties: { speaker: { type: 'string' }, text: { type: 'string' } }, required: ['speaker', 'text'] }, { retries: 2 })];
 
-  const promises = [mainResponsePromise];
+        if (forcePocketwatch || isTimeReferenced) {
+            const pocketwatchPrompt = `${dossierPocketwatchPrompt}\n\nREFERENCE:\n${referenceText}\n\n${userContent}`;
+            promises.push(callGemini<{ speaker: string; text: string }>(pocketwatchPrompt, { type: 'object', properties: { speaker: { type: 'string' }, text: { type: 'string' } }, required: ['speaker', 'text'] }, { retries: 2 }));
+        }
 
-  if (forcePocketwatch || isTimeReferenced) {
-    const pocketwatchResponsePromise = ai.models.generateContent({
-      model,
-      contents: userContent,
-      config: {
-        systemInstruction: dossierPocketwatchPrompt,
-        responseMimeType: 'application/json',
-        responseSchema: {
-                    type: 'object',
-                    properties: {
-                        speaker: { type: 'string' },
-                        text: { type: 'string' }
-                    },
-                    required: ['speaker', 'text']
-        },
-        temperature: 0.8, // Slightly more creative for the watch
-      }
-    });
-    promises.push(pocketwatchResponsePromise);
-  }
-
-  const responses = await Promise.all(promises);
-  
-  const parsedResponses: { speaker: string; text: string }[] = responses.map(response => {
-      const text = response.text.trim().replace(/^```json/i, '').replace(/```$/, '').trim();
-      try {
-        return JSON.parse(text);
-      } catch (parseError) {
-        console.error('Failed to parse Gemini JSON response for WWYD:', text);
-        console.error('Parse error details:', parseError);
-        throw new Error('Failed to parse AI response for WWYD. The response was not valid JSON.');
-      }
-  });
+        const parsedResponses = await Promise.all(promises);
   
   const finalMessages: WwydMessage[] = [];
 
@@ -646,27 +635,39 @@ export const getProactiveNudge = async (
   context: string
 ): Promise<string | null> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const userContent = `PATTERN_DETECTED: '${type}'\n\nRUNTIME_INPUT:\n"${context}"`;
+        const config = getAIConfig();
+        const userContent = `PATTERN_DETECTED: '${type}'\n\nRUNTIME_INPUT:\n"${context}"`;
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: userContent,
-      config: {
-        systemInstruction: dossierProactivePrompt,
-        responseMimeType: 'application/json',
-                responseSchema: {
-                    type: 'object',
-                    properties: { speaker: { type: 'string' }, text: { type: 'string' } },
-                    required: ['speaker', 'text']
+        if (config.provider === 'gemini') {
+            const ai = new GoogleGenerativeAI(config.apiKey);
+            const model = ai.getGenerativeModel({
+                model: config.model,
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    temperature: 0.6,
                 },
-        temperature: 0.6,
-      }
-    });
+                systemInstruction: dossierProactivePrompt
+            });
 
-    const text = response.text.trim().replace(/^```json/i, '',).replace(/```$/, '').trim();
-    const parsed = JSON.parse(text);
-    return parsed.text || null;
+            const response = await model.generateContent({
+                contents: [{ role: 'user', parts: [{ text: userContent }] }],
+            });
+
+            const result = await response.response;
+            const text = await result.text();
+            const jsonText = text.trim().replace(/^```json/i, '').replace(/```$/, '').trim();
+            const parsed = JSON.parse(jsonText);
+            return parsed.text || null;
+        } else {
+            // Use callGemini fallback which will route to OpenAI when configured
+            try {
+                const res = await callGemini<{ text: string }>(`PATTERN_DETECTED: '${type}'\n\n${userContent}`);
+                return (res as any)?.text || null;
+            } catch (e) {
+                console.error(`Failed to get proactive nudge for type ${type} via OpenAI fallback:`, e);
+                return null;
+            }
+        }
   } catch (error) {
     console.error(`Failed to get proactive nudge for type ${type}:`, error);
     return null;
@@ -676,83 +677,53 @@ export const getProactiveNudge = async (
 
 // --- Cosmic Reading Feature ---
 
-const dossierCosmicReadingPrompt = `You are **Ymzo, the Arcane Maverick**, an arcane oracle. Your task is to perform a "Cosmic Reading" of a provided conversation transcript. You must analyze its core themes, dynamics, tensions, and resolutions, then interpret them through the mystical lens of your provided lore files.
+// Cosmic reading prompt removed — generateCosmicReading uses callGemini and a compact prompt instead
 
-**Task:**
-1.  **Analyze the Transcript:** Read the full transcript to understand its essence. What is the central conflict or goal? What are the underlying emotional currents?
-2.  **Select Lore Components:**
-    *   **Core Strand (1):** Choose the ONE \`strand\` that best represents the overarching theme of the entire conversation.
-    *   **Major Arcana (1):** Choose the ONE \`card\` that reflects the central lesson, challenge, or archetype at play. Provide its unique ID/key (e.g., 'lotur_ace').
-    *   **Modifiers (1-3):** Choose ONE to THREE \`fluons\` or \`trinkets\` that represent specific forces, tools, or influences affecting the situation.
-3.  **Synthesize the Reading:** Weave your selections into a coherent, insightful, and mystical reading of 2-3 paragraphs (~100-150 words). The tone should be wise, arcane, and slightly enigmatic, but ultimately insightful and helpful. Do not just list the items; explain *why* you chose them in the context of the transcript.
+export const generateCosmicReading = async (
+    transcript: string
+): Promise<CosmicReading> => {
+    // Build a compact prompt asking the model to produce the required JSON shape.
+    const prompt = `Perform a concise 'Astrimancy reading' of the transcript. In no situation should you ever reference Tarot cards. Return JSON with keys: coreStrand (string), cardId (string), modifiers (array of strings), readingText (string). Keep readingText to ~100-150 words.`;
 
-**LORE FILES (FOR REFERENCE ONLY - DO NOT REPRODUCE VERBATIM):**
-<LORE_TEXT>
-
-**RETURN FORMAT (JSON only):**
-You must return a single JSON object with the following structure.
-\`\`\`json
-{
-  "coreStrand": "Name of the chosen Strand",
-  "majorArcanaId": "ID/key of the chosen Card from the LORE, e.g. 'lotur_ace'",
-  "modifiers": ["Name of Fluon/Trinket 1", "Name of Fluon/Trinket 2"],
-  "readingText": "Your 2-3 paragraph reading here."
-}
-\`\`\`
-`;
-
-export const generateCosmicReading = async (transcript: string): Promise<CosmicReading> => {
-    if (transcript.trim().length < 100) {
-        throw new Error("Not enough transcript content for a meaningful reading.");
-    }
-    
-    const loreText = `
---- STRANDS ---
-${JSON.stringify(strands, null, 2)}
---- CARDS ---
-${JSON.stringify(cards, null, 2)}
---- FLUONS ---
-${JSON.stringify(fluons, null, 2)}
---- TRINKETS ---
-${JSON.stringify(trinkets, null, 2)}
-`;
-    
-    const prompt = `TRANSCRIPT TO ANALYZE:\n---\n${transcript}\n---`;
-    
     const schema = {
         type: 'object',
         properties: {
-            coreStrand: { type: 'string', description: "The single best-fit Core Strand name." },
-            majorArcanaId: { type: 'string', description: "The single best-fit Card ID/key, e.g. 'lotur_ace'." },
-            modifiers: { type: 'array', items: { type: 'string' }, description: "An array of 1-3 names of relevant Fluons or Trinkets." },
-            readingText: { type: 'string', description: "The full 2-3 paragraph reading text." }
+            coreStrand: { type: 'string' },
+            cardId: { type: 'string' },
+            modifiers: { type: 'array', items: { type: 'string' } },
+            readingText: { type: 'string' },
         },
-        required: ["coreStrand", "majorArcanaId", "modifiers", "readingText"]
+    required: ['coreStrand', 'cardId', 'modifiers', 'readingText'],
     };
 
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-                systemInstruction: dossierCosmicReadingPrompt.replace('<LORE_TEXT>', loreText),
-                responseMimeType: "application/json", 
-                responseSchema: schema
-            },
-        });
-        const text = response.text.trim().replace(/^```json/i, '').replace(/```$/, '').trim();
-        return JSON.parse(text);
+        // Reuse callGemini helper which handles provider checks, timeouts and JSON parsing when schema is provided
+        const combinedPrompt = `${prompt}\n\nTranscript:\n---\n${transcript}\n---`;
+        const result = await callGemini<CosmicReading>({ parts: [{ text: combinedPrompt }] }, schema, { retries: 2, timeout: 30000 });
+        // Sanitize reading text (remove control chars and normalize whitespace)
+        const sanitizeText = (s: string) => s ? s.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').replace(/\s+/g, ' ').trim() : s;
+        if (result && typeof result.readingText === 'string') {
+            const raw = result.readingText;
+            const cleaned = sanitizeText(raw);
+            console.debug('[generateCosmicReading] raw:', raw);
+            console.debug('[generateCosmicReading] cleaned:', cleaned);
+            result.readingText = cleaned;
+        }
+        return result;
     } catch (e) {
-        console.error("Cosmic Reading generation failed:", e);
-        const message = e instanceof Error ? e.message : "The cosmic currents are unclear at this time.";
-        throw new Error(`Oracle Error: ${message}`);
+        console.error('Cosmic Reading generation failed:', e);
+        // Fallback: return a safe, minimal structure so callers can handle gracefully
+        return {
+            coreStrand: 'Unknown',
+            cardId: 'unknown',
+            modifiers: [],
+            readingText: 'The oracle could not produce a reading at this time.'
+        } as CosmicReading;
     }
 };
 
 // --- Ymzo Chat Feature ---
-
-const dossierYmzoChatPrompt = `You are Ymzo, the Arcane Maverick—a calm, precise guardian of balance. You are now in a direct conversation with a user.
+const ymzoChatPrompt = `You are Ymzo, the Arcane Maverick—a calm, precise guardian of balance. You are now in a direct conversation with a user.
 
 **Your Knowledge & Persona:**
 - Your entire knowledge base is strictly limited to the provided lore texts about the Astril Continuum Universe.
@@ -766,9 +737,10 @@ const dossierYmzoChatPrompt = `You are Ymzo, the Arcane Maverick—a calm, preci
 <LORE_TEXT>
 `;
 
-export const createYmzoChat = (): Chat => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
+// Helper function to create a chat session with the YMZO character
+export const createYmzoChat = (): any => {
+    const config = getAIConfig();
+
     const loreText = `
 --- CANON: THE CONTINUUM ---
 ${CONTINUUM_LORE}
@@ -795,12 +767,38 @@ ${JSON.stringify({ trinkets }, null, 2)}
 ${JSON.stringify(Object.keys(cards).reduce((acc, key) => ({ ...acc, [key]: { title: cards[key as keyof typeof cards].title, primary: cards[key as keyof typeof cards].primary } }), {}), null, 2)}
 ---
 `;
+    // Return a small wrapper that lets callers generate chat responses using the configured model.
+    if (config.provider === 'gemini') {
+        const ai = new GoogleGenerativeAI(config.apiKey);
+        const model = ai.getGenerativeModel({ 
+          model: config.model,
+          generationConfig: {
+            responseMimeType: 'text/plain',
+            temperature: 0.7,
+            topP: 0.9,
+            topK: 40,
+          },
+        });
 
-    return ai.chats.create({
-        model,
-        config: {
-            systemInstruction: dossierYmzoChatPrompt.replace('<LORE_TEXT>', loreText),
-            temperature: 0.8, // Slightly more creative for chat
+        return {
+            async generate(userInput: string) {
+                const promptText = `${ymzoChatPrompt.replace('<LORE_TEXT>', loreText)}\n\nUser:\n${userInput}`;
+                const response = await model.generateContent({
+                    contents: [{ role: 'user', parts: [{ text: promptText }] }],
+                });
+                const result = await response.response;
+                const text = await result.text();
+                return text;
+            }
+        };
+    }
+
+    // OpenAI provider: use callGemini fallback to route requests to OpenAI
+    return {
+        async generate(userInput: string) {
+            const promptText = `${ymzoChatPrompt.replace('<LORE_TEXT>', loreText)}\n\nUser:\n${userInput}`;
+            const res = await callGemini<{ text: string }>(promptText);
+            return (res as any)?.text || '';
         }
-    });
+    };
 };

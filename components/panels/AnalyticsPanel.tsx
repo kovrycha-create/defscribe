@@ -110,6 +110,18 @@ const AuraVisualization: React.FC<{ auraData: AuraData | null; liveAudioFeatures
         audioFeaturesRef.current = liveAudioFeatures;
     });
 
+    // Stable keyword appearance: deterministic offsets (so they don't jump each render),
+    // slightly longer display, and fewer simultaneous keywords to reduce clutter.
+    const stableOffset = (s: string, range = 12) => {
+        let h = 0;
+        for (let i = 0; i < s.length; i++) {
+            h = (h * 31 + s.charCodeAt(i)) >>> 0;
+        }
+        const x = (h % (range * 2)) - range;
+        const y = ((h >> 8) % (range * 2)) - range;
+        return { x, y };
+    };
+
     useEffect(() => {
         const interval = setInterval(() => {
             if (auraData?.keywords && auraData.keywords.length > 0) {
@@ -117,15 +129,15 @@ const AuraVisualization: React.FC<{ auraData: AuraData | null; liveAudioFeatures
                 if (availableKeywords.length > 0) {
                     const newKeyword = availableKeywords[Math.floor(Math.random() * availableKeywords.length)];
                     setVisibleKeywords(prev => {
-                        const next = [...prev, newKeyword].slice(-3); // Show max 3 keywords
+                        const next = [...prev, newKeyword].slice(-2); // Show max 2 keywords
                         setTimeout(() => {
                             setVisibleKeywords(current => current.filter(k => k !== newKeyword));
-                        }, 4000); // 4s animation duration
+                        }, 6000); // 6s display duration for stability
                         return next;
                     });
                 }
             }
-        }, 2000);
+        }, 3500);
         return () => clearInterval(interval);
     }, [auraData?.keywords, visibleKeywords]);
     
@@ -143,7 +155,8 @@ const AuraVisualization: React.FC<{ auraData: AuraData | null; liveAudioFeatures
             if (canvas.parentElement) {
                 canvas.width = canvas.parentElement.offsetWidth * dpr;
                 canvas.height = canvas.parentElement.offsetHeight * dpr;
-                ctx.scale(dpr, dpr);
+                // Use setTransform to avoid accumulating scales on repeated resize
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             }
         };
         resize();
@@ -168,31 +181,37 @@ const AuraVisualization: React.FC<{ auraData: AuraData | null; liveAudioFeatures
             
             // --- Particles ---
             const volume = audioFeaturesRef.current.volume || 0;
-            if (volume > 0.5 && Math.random() > (0.8 / settings.auraParticleDensity) && particlesRef.current.length < 200) {
+            // Reduce spawn rate and cap for a calmer experience
+            if (volume > 0.5 && Math.random() > (0.95 / settings.auraParticleDensity) && particlesRef.current.length < 120) {
                 const sentiment = auraData?.sentiment || 0;
                 let particleColor = settings.auraCustomColors.neutral;
                 if (sentiment > 0.3) particleColor = settings.auraCustomColors.positive;
                 else if (sentiment < -0.3) particleColor = settings.auraCustomColors.negative;
-                
+
                 particlesRef.current.push({
                     x: centerX, y: centerY,
-                    vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3,
+                    vx: (Math.random() - 0.5) * 2, vy: (Math.random() - 0.5) * 2,
                     radius: Math.random() * 2 + 1, alpha: 1, color: particleColor,
                 });
             }
 
-            particlesRef.current.forEach((p, i) => {
+            // Iterate backwards to safely remove faded particles
+            for (let i = particlesRef.current.length - 1; i >= 0; i--) {
+                const p = particlesRef.current[i];
                 p.x += p.vx;
                 p.y += p.vy;
-                p.alpha -= 0.01;
-                if (p.alpha <= 0) particlesRef.current.splice(i, 1);
-                
+                p.alpha -= 0.006; // slower fade for smoother visuals
+                if (p.alpha <= 0) {
+                    particlesRef.current.splice(i, 1);
+                    continue;
+                }
+
                 ctx.globalAlpha = p.alpha;
                 ctx.fillStyle = p.color;
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
                 ctx.fill();
-            });
+            }
             ctx.globalAlpha = 1;
 
             // --- Rings ---
@@ -242,18 +261,49 @@ const AuraVisualization: React.FC<{ auraData: AuraData | null; liveAudioFeatures
             onMouseEnter={() => setShowControls(true)}
             onMouseLeave={() => setShowControls(false)}
         >
-            <canvas ref={canvasRef} />
+            <div className="w-full h-full flex items-stretch gap-4">
+                <div className="flex-1 relative">
+                    <canvas ref={canvasRef} className="w-full h-full" />
+                </div>
+                {/* Info panel */}
+                <aside className="w-64 p-3 rounded-lg bg-slate-900/60 border border-slate-700/50 flex-shrink-0">
+                    <h4 className="text-sm font-semibold text-slate-200 mb-2">Aura Readout</h4>
+                    <div className="text-sm text-slate-300 space-y-2">
+                        <div>
+                            <div className="text-xs text-slate-400">Dominant Emotion</div>
+                            <div className="font-bold text-white">{auraData.dominantEmotion}</div>
+                        </div>
+                        <div>
+                            <div className="text-xs text-slate-400">Sentiment</div>
+                            <div className="font-bold text-white">{(auraData.sentiment * 100).toFixed(0)}%</div>
+                        </div>
+                        <div>
+                            <div className="text-xs text-slate-400">Keywords</div>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                                {auraData.keywords.map(k => (
+                                    <span key={k} className="bg-slate-800/40 px-2 py-1 rounded text-xs text-slate-200">{k}</span>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="pt-2">
+                            <div className="text-xs text-slate-400">Tips</div>
+                            <div className="text-xs text-slate-300">Speak naturally; aura updates every few seconds.</div>
+                        </div>
+                    </div>
+                </aside>
+            </div>
             {visibleKeywords.map((keyword, i) => {
+                const offsets = stableOffset(keyword, 16);
                 const style: React.CSSProperties = {
                     position: 'absolute',
-                    top: `${20 + (i * 15)}%`,
-                    left: `${i % 2 === 0 ? 10 : 60}%`,
-                    animation: `aura-keyword-float 4s ease-in-out forwards`,
-                    '--tx': `${(Math.random() - 0.5) * 50}px`,
-                    '--ty': `${(Math.random() - 0.5) * 50}px`,
+                    top: `${18 + (i * 16)}%`,
+                    left: `${i % 2 === 0 ? 8 : 62}%`,
+                    animation: `aura-keyword-float 6s ease-in-out forwards`,
+                    // Use small deterministic translations to reduce jitter
+                    transform: `translate(${offsets.x}px, ${offsets.y}px)`,
                 } as React.CSSProperties;
                 return (
-                    <span key={keyword} style={style} className="text-lg font-bold text-slate-300 pointer-events-none">
+                    <span key={keyword} style={style} className="text-lg font-bold text-slate-300 pointer-events-none select-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]">
                         {keyword}
                     </span>
                 );
@@ -293,20 +343,46 @@ type ActiveTab = 'summary' | 'actions' | 'snippets' | 'stats' | 'reading' | 'aur
 
 const useTypingEffect = (text: string, speed = 25) => {
     const [displayedText, setDisplayedText] = useState('');
+    const intervalRef = useRef<number | null>(null);
+    const idxRef = useRef(0);
+
     useEffect(() => {
-        setDisplayedText(''); 
-        if (text) {
-            let i = 0;
-            const intervalId = setInterval(() => {
-                setDisplayedText(prev => prev + text.charAt(i));
-                i++;
-                if (i >= text.length) {
-                    clearInterval(intervalId);
-                }
-            }, speed);
-            return () => clearInterval(intervalId);
+        // Clear any existing interval (defensive) and reset state
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
         }
+        setDisplayedText('');
+        idxRef.current = 0;
+
+        if (!text) return undefined;
+
+        intervalRef.current = window.setInterval(() => {
+            setDisplayedText(prev => {
+                // If prev length has gotten out of sync, snap to the expected slice
+                if (prev.length !== idxRef.current) {
+                    const corrected = text.slice(0, idxRef.current);
+                    return corrected;
+                }
+                const nextChar = text.charAt(idxRef.current) || '';
+                idxRef.current += 1;
+                // If we've reached the end, clear interval
+                if (idxRef.current >= text.length && intervalRef.current) {
+                    clearInterval(intervalRef.current);
+                    intervalRef.current = null;
+                }
+                return prev + nextChar;
+            });
+        }, speed);
+
+        return () => {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+        };
     }, [text, speed]);
+
     return displayedText;
 };
 
@@ -361,7 +437,7 @@ const LoreGlyph: React.FC<{ name: string; type: 'strand' | 'card' | 'modifier'; 
 
 const CosmicReadingPanel: React.FC<{ reading: CosmicReading; onOpenCodex: (tab: string, entryId: string) => void; }> = ({ reading, onOpenCodex }) => {
     const typedReadingText = useTypingEffect(reading.readingText);
-    const cardTitle = cards[reading.majorArcanaId as keyof typeof cards]?.title || reading.majorArcanaId;
+    const cardTitle = cards[reading.cardId as keyof typeof cards]?.title || reading.cardId;
 
     return (
         <div className="flex-1 overflow-y-auto bg-slate-900/50 rounded-lg p-4 animate-[fadeIn_0.5s_ease-out]">
@@ -371,7 +447,7 @@ const CosmicReadingPanel: React.FC<{ reading: CosmicReading; onOpenCodex: (tab: 
             <div className="space-y-4">
                 <div className="flex flex-wrap items-center justify-center gap-2">
                     <LoreGlyph name={reading.coreStrand} type="strand" onOpenCodex={onOpenCodex} />
-                    <LoreGlyph name={cardTitle} type="card" cardId={reading.majorArcanaId} onOpenCodex={onOpenCodex} />
+                    <LoreGlyph name={cardTitle} type="card" cardId={reading.cardId} onOpenCodex={onOpenCodex} />
                     {reading.modifiers.map(mod => <LoreGlyph key={mod} name={mod} type="modifier" onOpenCodex={onOpenCodex} />)}
                 </div>
                 <div className="border-t border-[var(--color-secondary)]/20 my-4"></div>
@@ -428,6 +504,7 @@ const TabButton: React.FC<{
     count?: number;
     isIconOnly?: boolean;
     iconSizeVariant?: 'normal' | 'compact' | 'xs';
+    pulse?: boolean;
 }> = ({ name, icon, tab, activeTab, onClick, count, isIconOnly, iconSizeVariant = 'normal' }) => {
   const isActive = activeTab === tab;
   
@@ -439,13 +516,14 @@ const TabButton: React.FC<{
         ? (iconSizeVariant === 'xs' ? 'flex-grow-0 flex-shrink-0 basis-10' : iconSizeVariant === 'compact' ? 'flex-grow-0 flex-shrink-0 basis-12' : 'flex-grow-0 flex-shrink-0 basis-16')
         : 'flex-auto';
 
-  return (
+        return (
     <Tooltip content={name}>
       <button
         onClick={() => onClick(tab)}
         className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses} ${layoutClasses}`}
       >
-    {isIconOnly ? <i className={`fas ${icon} ${iconSizeVariant === 'xs' ? 'text-sm' : iconSizeVariant === 'compact' ? 'text-base' : 'text-lg'}`}></i> : name}
+        {isIconOnly ? <i className={`fas ${icon} ${iconSizeVariant === 'xs' ? 'text-sm' : iconSizeVariant === 'compact' ? 'text-base' : 'text-lg'}`}></i> : name}
+        {/* pulse handled by parent via absolute badge when needed */}
         {count != null && count > 0 && (
           <span className={`absolute top-1 text-xs bg-[var(--color-secondary)] text-white rounded-full h-5 min-w-[1.25rem] px-1 flex items-center justify-center font-bold ${isIconOnly ? 'right-1' : 'right-2'}`}>
             {count > 99 ? "99+" : count}
@@ -488,6 +566,13 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
   }, []);
 
   const activeTab = isTourActive && currentTourStepId === 'summary' ? 'summary' : localActiveTab;
+
+    // Auto-open Aura tab when aura data appears (helps users discover the feature)
+    useEffect(() => {
+        if (auraData) {
+            setLocalActiveTab('aura');
+        }
+    }, [auraData]);
 
   const handleTabClick = (tab: ActiveTab) => {
     setLocalActiveTab(tab);
@@ -571,25 +656,30 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
     <div className="flex flex-col h-full cosmo-panel md:rounded-2xl p-2 md:p-4 gap-4 overflow-hidden">
       <header className="flex items-end z-10 -mx-2 md:-mx-4">
         <nav ref={navRef} className="flex w-full px-2 md:px-4 border-b border-[rgba(var(--color-primary-rgb),0.5)]">
-            {TABS_CONFIG.map(tabConfig => {
-                // All tabs should render as icons now; use iconSizeVariant to control size
+                {TABS_CONFIG.map(tabConfig => {
+                // Render tabs as icon-only (reverted to the original behavior)
                 const isIconOnly = true;
                 let count: number | undefined;
                 if (tabConfig.tab === 'actions') count = actionItems.length;
                 if (tabConfig.tab === 'snippets') count = snippets.length;
                 
                 return (
-                    <TabButton
-                        key={tabConfig.tab}
-                        name={tabConfig.name}
-                        icon={tabConfig.icon}
-                        tab={tabConfig.tab}
-                        activeTab={activeTab}
-                        onClick={handleTabClick}
-                        count={count}
-                        isIconOnly={isIconOnly}
-                        iconSizeVariant={iconSizeVariant}
-                    />
+                                                                <div key={tabConfig.tab} className="relative">
+                                                                    <TabButton
+                                                                        name={tabConfig.name}
+                                                                        icon={tabConfig.icon}
+                                                                        tab={tabConfig.tab}
+                                                                        activeTab={activeTab}
+                                                                        onClick={handleTabClick}
+                                                                        count={count}
+                                                                        isIconOnly={isIconOnly}
+                                                                        iconSizeVariant={iconSizeVariant}
+                                                                    />
+                                                                    {/* Aura pulse indicator: show a small pulsing dot when auraData exists and user isn't viewing aura */}
+                                                                    {tabConfig.tab === 'aura' && auraData && activeTab !== 'aura' && (
+                                                                        <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(250,204,21,0.9)] animate-pulse" aria-hidden="true"></span>
+                                                                    )}
+                                                                </div>
                 );
             })}
         </nav>

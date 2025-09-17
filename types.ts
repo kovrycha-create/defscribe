@@ -135,7 +135,7 @@ export interface Session {
 
 export interface CosmicReading {
   coreStrand: string; // The name of the strand, e.g., "lotŭr"
-  majorArcanaId: string; // The ID of the card, e.g., "radi_ace"
+  cardId: string; // The ID of the card, e.g., "radi_ace"
   modifiers: string[]; // Names of Fluons or Trinkets
   readingText: string;
 }
