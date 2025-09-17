@@ -14,12 +14,22 @@ const getInitialBoolean = (key: string, defaultValue: boolean): boolean => {
 const getInitialNumber = (key: string, defaultValue: number): number => {
     try {
         const saved = localStorage.getItem(key);
-        const parsed = saved !== null ? parseInt(saved, 10) : defaultValue;
+        const parsed = saved !== null ? parseFloat(saved) : defaultValue;
         return isNaN(parsed) ? defaultValue : parsed;
     } catch {
         return defaultValue;
     }
 };
+
+const getInitialObject = (key: string, defaultValue: any): any => {
+    try {
+        const saved = localStorage.getItem(key);
+        return saved ? JSON.parse(saved) : defaultValue;
+    } catch {
+        return defaultValue;
+    }
+};
+
 
 const useAppSettings = () => {
     const getInitialCustomTheme = () => {
@@ -31,15 +41,17 @@ const useAppSettings = () => {
         }
     };
     
-    const [viewModeOverride, _setViewModeOverride] = useState<'desktop' | 'mobile' | null>(() => localStorage.getItem('defscribe-viewModeOverride') as 'desktop' | 'mobile' | null);
+    const [viewModeOverride, _setViewModeOverride] = useState<'desktop' | 'mobile' | null>(() => (localStorage.getItem('defscribe-viewModeOverride') as 'desktop' | 'mobile' | null) || null);
 
     const setViewModeOverride = (mode: 'desktop' | 'mobile' | null) => {
         _setViewModeOverride(mode);
-        if (mode) {
-            localStorage.setItem('defscribe-viewModeOverride', mode);
-        } else {
-            localStorage.removeItem('defscribe-viewModeOverride');
-        }
+        try {
+            if (mode) {
+                localStorage.setItem('defscribe-viewModeOverride', mode);
+            } else {
+                localStorage.removeItem('defscribe-viewModeOverride');
+            }
+        } catch {}
     };
 
     const [themeId, _setThemeId] = useState(() => parseInt(localStorage.getItem('defscribe-themeId') || '1', 10));
@@ -80,6 +92,23 @@ const useAppSettings = () => {
         } catch {}
     }, [panelLayout]);
 
+    // --- Aura Settings ---
+    const [auraPalette, _setAuraPalette] = useState<string>(() => localStorage.getItem('defscribe-auraPalette') || 'emotion');
+    const [auraPulsationSpeed, _setAuraPulsationSpeed] = useState<number>(() => getInitialNumber('defscribe-auraPulsationSpeed', 1.0));
+    const [auraParticleDensity, _setAuraParticleDensity] = useState<number>(() => getInitialNumber('defscribe-auraParticleDensity', 1.0));
+    const [auraCustomColors, _setAuraCustomColors] = useState<{ core: string; positive: string; negative: string; neutral: string; }>(() => getInitialObject('defscribe-auraCustomColors', {
+        core: '#a777ff',
+        positive: '#4ade80',
+        negative: '#ef4444',
+        neutral: '#e2e8f0',
+    }));
+
+    const setAuraPalette = (palette: string) => { _setAuraPalette(palette); localStorage.setItem('defscribe-auraPalette', palette); };
+    const setAuraPulsationSpeed = (speed: number) => { _setAuraPulsationSpeed(speed); localStorage.setItem('defscribe-auraPulsationSpeed', String(speed)); };
+    const setAuraParticleDensity = (density: number) => { _setAuraParticleDensity(density); localStorage.setItem('defscribe-auraParticleDensity', String(density)); };
+    const setAuraCustomColors = (colors: { core: string; positive: string; negative: string; neutral: string; }) => { _setAuraCustomColors(colors); localStorage.setItem('defscribe-auraCustomColors', JSON.stringify(colors)); };
+
+
     const [diarizationSettings, setDiarizationSettings] = useState<DiarizationSettings>({
         enabled: false,
         mode: "local",
@@ -92,6 +121,17 @@ const useAppSettings = () => {
     const [transcriptTextSize, setTranscriptTextSize] = useState<'sm' | 'base' | 'lg' | 'xl'>('base');
     const [isRecordingEnabled, _setIsRecordingEnabled] = useState(() => getInitialBoolean('defscribe-isRecordingEnabled', true));
     const [visualizerBackground, _setVisualizerBackground] = useState<VisualizerBackground>(() => (localStorage.getItem('defscribe-visualizerBackground') as VisualizerBackground) || 'starfield');
+    const [censorLanguage, _setCensorLanguage] = useState(() => getInitialBoolean('defscribe-censorLanguage', false));
+
+    const setCensorLanguage = (value: boolean | ((prevState: boolean) => boolean)) => {
+        _setCensorLanguage(prev => {
+            const newValue = typeof value === 'function' ? value(prev) : value;
+            try {
+                localStorage.setItem('defscribe-censorLanguage', String(newValue));
+            } catch {}
+            return newValue;
+        });
+    };
 
     const setVisualizerBackground = (bg: VisualizerBackground) => {
         _setVisualizerBackground(bg);
@@ -187,6 +227,12 @@ const useAppSettings = () => {
         setVisualizerBackground,
         panelLayout,
         setPanelLayout,
+        censorLanguage,
+        setCensorLanguage,
+        auraPalette, setAuraPalette,
+        auraPulsationSpeed, setAuraPulsationSpeed,
+        auraParticleDensity, setAuraParticleDensity,
+        auraCustomColors, setAuraCustomColors,
     };
 };
 

@@ -6,8 +6,7 @@ import SpeakerEditorModal from '../SpeakerEditorModal';
 import AudioPlayer from '../AudioPlayer';
 import RecordingControls from '../RecordingControls';
 import ProactiveAssistantMessage from '../ProactiveAssistantMessage';
-// FIX: Imported ReframingResult type to support the new reframing feature.
-import { type TranscriptEntry, type SpeakerId, type SpeakerProfile, type VisualizerBackground, type ProactiveMessage, type ReframingResult } from '../../types';
+import { type TranscriptEntry, type SpeakerId, type SpeakerProfile, type VisualizerBackground, type ProactiveMessage, ReframingResult } from '../../types';
 
 interface MainContentPanelProps {
   isListening: boolean;
@@ -46,11 +45,9 @@ interface MainContentPanelProps {
   setVisualizerBackground: (bg: VisualizerBackground) => void;
   transcribeFile: (file: File) => Promise<void>;
   isTranscribingFile: boolean;
-  // FIX: Added missing props for the reframing feature.
   reframingResults: Record<string, ReframingResult>;
   handleReframeEntry: (entryId: string) => void;
   onOpenCodex: (tab: string, entryId: string) => void;
-  censorLanguage: boolean;
 }
 
 const MainContentPanel: React.FC<MainContentPanelProps> = ({
@@ -61,7 +58,7 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
   recordingDuration, onStop, onStart, isRecordingEnabled, setIsRecordingEnabled, isTrueMobile,
   showVisualizerHint, proactiveMessage, onDismissProactiveMessage,
   visualizerBackground, setVisualizerBackground, transcribeFile, isTranscribingFile,
-  reframingResults, handleReframeEntry, onOpenCodex, censorLanguage
+  reframingResults, handleReframeEntry, onOpenCodex
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingSpeaker, setEditingSpeaker] = useState<SpeakerProfile | null>(null);
@@ -186,14 +183,14 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
     <>
       <div className="flex flex-col h-full cosmo-panel md:rounded-2xl p-2 md:p-4 gap-4">
         <header className="flex flex-col sm:flex-row items-center gap-2 pb-2 border-b border-[rgba(var(--color-primary-rgb),0.2)] z-10">
-            <div className="relative w-full sm:w-72 flex-shrink sm:min-w-[12rem]">
+            <div className="relative w-full sm:w-auto flex-shrink-0">
                 <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
                 <input
                 type="text"
                 placeholder="Search transcript..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full cosmo-input rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none"
+                className="w-full sm:w-72 cosmo-input rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none"
                 />
             </div>
             
@@ -299,7 +296,6 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
             reframingResults={reframingResults}
             onReframeEntry={handleReframeEntry}
             onOpenCodex={onOpenCodex}
-            censorLanguage={censorLanguage}
           />
         </div>
       </div>

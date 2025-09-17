@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { type TranscriptEntry, type SpeakerId, type SpeakerProfile, type DiarizationSettings } from '../types';
+import { type TranscriptEntry, type SpeakerId, type SpeakerProfile, type DiarizationSettings, type DiarizationSegment } from '../types';
 import { DIARIZATION_PALETTE } from '../constants';
 import useDiarization from './useDiarization';
 import { type ToastType } from '../components/Toast';
 import { translateText } from '../services/geminiService';
+
+// Allow diarization segments a small buffer to account for latency between speech and transcript finalization.
+const SPEAKER_ASSIGNMENT_TOLERANCE_MS = 4000;
 
 const usePrevious = <T,>(value: T): T | undefined => {
   const ref = useRef<T | undefined>(undefined);
@@ -142,10 +145,21 @@ const useTranscript = ({
             let hasChanges = false;
             const updatedEntries = prevEntries.map(entry => {
                 const entryTimestampMs = entry.rawTimestamp - startTime;
-                
-                const matchingSegment = segments.find(
-                    seg => entryTimestampMs >= seg.startMs && entryTimestampMs <= seg.endMs
-                );
+
+                let matchingSegment: DiarizationSegment | undefined;
+                for (let i = segments.length - 1; i >= 0; i--) {
+                    const seg = segments[i];
+                    const withinWindow = entryTimestampMs >= seg.startMs - SPEAKER_ASSIGNMENT_TOLERANCE_MS
+                        && entryTimestampMs <= seg.endMs + SPEAKER_ASSIGNMENT_TOLERANCE_MS;
+                    if (withinWindow) {
+                        matchingSegment = seg;
+                        break;
+                    }
+
+                    if (entryTimestampMs > seg.endMs + SPEAKER_ASSIGNMENT_TOLERANCE_MS) {
+                        break;
+                    }
+                }
 
                 const currentSpeakerId = entry.speakerIds?.[0];
                 const newSpeakerId = matchingSegment?.speakerId;
@@ -214,6 +228,12 @@ const useTranscript = ({
             addToast('Translation Failed', `Could not translate text.`, 'error');
         }
     }, [transcriptEntries, addToast]);
+    
+    const loadTranscriptData = useCallback((data: { entries: TranscriptEntry[], profiles: Record<SpeakerId, SpeakerProfile> }) => {
+        setTranscriptEntries(data.entries || []);
+        setSpeakerProfiles(data.profiles || {});
+        startTimeRef.current = data.entries.length > 0 ? data.entries[0].rawTimestamp : Date.now();
+    }, []);
 
     return {
         transcriptEntries,
@@ -226,6 +246,7 @@ const useTranscript = ({
         handleTranslateEntry,
         handleUpdateEntryText,
         activeSpeaker,
+        loadTranscriptData,
     };
 };
 

@@ -1,4 +1,4 @@
-import { type TranscriptEntry, type SpeakerProfile, type SpeakerId, type ActionItem, type Snippet, type SpeechAnalytics, type SummaryStyle, type GeneratedTitle } from './types';
+import { type TranscriptEntry, type SpeakerProfile, type SpeakerId, type ActionItem, type Snippet, type SpeechAnalytics, type SummaryStyle, type GeneratedTitle, type TopicSegment } from './types';
 
 // 🔮 Astril Continuum Universe (ACU) flavored sample data for DefScribe guided tour
 // Drop-in replacement for the original placeholders.
@@ -68,7 +68,14 @@ export const SAMPLE_ANALYTICS: Partial<SpeechAnalytics> = {
   pauses: 5,
   speakingRateLabel: 'Medium',
   emotionalTone: 'thinking',
-  topics: ['HYRUM Sentinel Dashboard', 'Fluon Analytics', 'RiftSockets', 'AHYBE Relay Quotas', 'Convergence Demo'],
+  // FIX: Changed to be an array of TopicSegment objects to match the type definition.
+  topics: [
+    { id: 'st-analytics-1', text: 'HYRUM Sentinel Dashboard', startMs: 0, endMs: 12000 },
+    { id: 'st-analytics-2', text: 'Fluon Analytics', startMs: 5000, endMs: 18000 },
+    { id: 'st-analytics-3', text: 'RiftSockets', startMs: 18000, endMs: 34000 },
+    { id: 'st-analytics-4', text: 'AHYBE Relay Quotas', startMs: 26000, endMs: 30000 },
+    { id: 'st-analytics-5', text: 'Convergence Demo', startMs: 26000, endMs: 40000 },
+  ],
   talkTime: {
     S1: { percentage: 46, seconds: 18 },
     S2: { percentage: 54, seconds: 22 },
@@ -135,12 +142,13 @@ export const SAMPLE_SNIPPETS: Snippet[] = [
   },
 ];
 
-export const SAMPLE_TOPICS: string[] = [
-  'HYRUM Sentinel Dashboard',
-  'Fluon Analytics',
-  'RiftSockets',
-  'AHYBE Relay Quotas',
-  'Convergence Demo',
+// FIX: Changed to be an array of TopicSegment objects to provide consistent types for the tour.
+export const SAMPLE_TOPICS: TopicSegment[] = [
+  { id: 'st-1', text: 'HYRUM Sentinel Dashboard', startMs: 0, endMs: 12000 },
+  { id: 'st-2', text: 'Fluon Analytics', startMs: 5000, endMs: 18000 },
+  { id: 'st-3', text: 'RiftSockets', startMs: 18000, endMs: 34000 },
+  { id: 'st-4', text: 'AHYBE Relay Quotas', startMs: 26000, endMs: 30000 },
+  { id: 'st-5', text: 'Convergence Demo', startMs: 26000, endMs: 40000 },
 ];
 
 export const SAMPLE_TITLES: GeneratedTitle[] = [

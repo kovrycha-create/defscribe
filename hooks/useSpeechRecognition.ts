@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { type ToastType } from '../components/Toast';
 import { transcribeAudio } from '../services/geminiService';
+import { AudioContextManager } from '../utils/AudioContextManager';
+import { type LiveAudioFeatures } from '../types';
 
 const usePrevious = <T,>(value: T): T | undefined => {
   const ref = useRef<T | undefined>(undefined);
@@ -65,8 +67,12 @@ interface SpeechRecognitionHook {
   clearTranscript: () => void;
   stream: MediaStream | null;
   audioBlobUrl: string | null;
+  setAudioBlobUrl: React.Dispatch<React.SetStateAction<string | null>>;
   deleteAudio: () => void;
   recordingDuration: number;
+  transcribeFile: (file: File) => Promise<void>;
+  isTranscribingFile: boolean;
+  liveAudioFeatures: LiveAudioFeatures;
 }
 
 const blobToBase64 = (blob: Blob): Promise<string> => {
@@ -102,11 +108,19 @@ const useSpeechRecognition = ({ spokenLanguage, addToast, isRecordingEnabled }: 
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [isTranscribingFile, setIsTranscribingFile] = useState(false);
+  const [liveAudioFeatures, setLiveAudioFeatures] = useState<LiveAudioFeatures>({ volume: 0, pitch: 0 });
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  const audioAnalysisRef = useRef<{
+      analyser: AnalyserNode | null;
+      source: MediaStreamAudioSourceNode | null;
+      animationFrameId: number | null;
+  }>({ analyser: null, source: null, animationFrameId: null });
   
   const confidenceScoresRef = useRef<number[]>([]);
   const listeningIntentRef = useRef(false);
@@ -147,6 +161,15 @@ const useSpeechRecognition = ({ spokenLanguage, addToast, isRecordingEnabled }: 
       mediaRecorderRef.current.stop();
     }
     
+    // Stop audio analysis
+    if (audioAnalysisRef.current.animationFrameId) {
+        cancelAnimationFrame(audioAnalysisRef.current.animationFrameId);
+    }
+    audioAnalysisRef.current.source?.disconnect();
+    AudioContextManager.release('live-features');
+    audioAnalysisRef.current = { analyser: null, source: null, animationFrameId: null };
+    setLiveAudioFeatures({ volume: 0, pitch: 0 });
+    
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -159,6 +182,47 @@ const useSpeechRecognition = ({ spokenLanguage, addToast, isRecordingEnabled }: 
     }
     setIsListening(false);
   }, [isCloudMode]);
+  
+  const clearTranscript = useCallback(() => {
+      setTranscript('');
+      setFinalTranscript('');
+      confidenceScoresRef.current = [];
+      setAverageConfidence(0);
+      deleteAudio();
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      setRecordingDuration(0);
+  }, [deleteAudio]);
+
+  const transcribeFile = useCallback(async (file: File) => {
+    if (isTranscribingFile || isListening) return;
+
+    clearTranscript();
+    setIsTranscribingFile(true);
+    addToast('Processing Audio', 'Uploading and transcribing your file...', 'processing');
+
+    try {
+        const base64Audio = await blobToBase64(file);
+        const result = await transcribeAudio(base64Audio, file.type);
+
+        if (result.startsWith('Error:')) {
+            addToast('Transcription Failed', result, 'error');
+            setError(result);
+        } else {
+            addToast('Transcription Complete', 'Received transcript from cloud.', 'success');
+            setFinalTranscript(result + ' ');
+        }
+    } catch (err) {
+        const message = err instanceof Error ? err.message : 'An unknown error occurred.';
+        addToast('Transcription Failed', message, 'error');
+        setError(message);
+    } finally {
+        setIsTranscribingFile(false);
+    }
+  }, [addToast, clearTranscript, isListening, isTranscribingFile]);
+
 
   const startListening = useCallback(async () => {
     if (isListening) {
@@ -194,6 +258,42 @@ const useSpeechRecognition = ({ spokenLanguage, addToast, isRecordingEnabled }: 
 
         setIsListening(true);
         listeningIntentRef.current = true;
+        
+        // Setup live audio analysis
+        const audioContext = AudioContextManager.acquire('live-features');
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        const source = audioContext.createMediaStreamSource(mediaStream);
+        source.connect(analyser);
+        audioAnalysisRef.current = { analyser, source, animationFrameId: null };
+
+        const analyze = () => {
+            const { analyser } = audioAnalysisRef.current;
+            if (analyser) {
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(dataArray);
+
+                // Volume (RMS)
+                const rms = Math.sqrt(dataArray.reduce((acc, val) => acc + (val * val), 0) / dataArray.length);
+                const volume = rms / 128; // Normalize to approx 0-1 range
+
+                // Pitch (simple max bin)
+                let maxVal = -1;
+                let maxIndex = -1;
+                for (let i = 0; i < dataArray.length; i++) {
+                    if (dataArray[i] > maxVal) {
+                        maxVal = dataArray[i];
+                        maxIndex = i;
+                    }
+                }
+                const pitch = maxIndex * (audioContext.sampleRate / analyser.fftSize);
+
+                setLiveAudioFeatures({ volume, pitch });
+            }
+            audioAnalysisRef.current.animationFrameId = requestAnimationFrame(analyze);
+        };
+        analyze();
+
 
         const needsMediaRecorder = isRecordingEnabled || isCloudMode;
 
@@ -366,20 +466,7 @@ const useSpeechRecognition = ({ spokenLanguage, addToast, isRecordingEnabled }: 
     }
   }, [isListening, spokenLanguage, prevSpokenLanguage, isCloudMode]);
 
-  const clearTranscript = useCallback(() => {
-      setTranscript('');
-      setFinalTranscript('');
-      confidenceScoresRef.current = [];
-      setAverageConfidence(0);
-      deleteAudio();
-      if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
-        recordingTimerRef.current = null;
-      }
-      setRecordingDuration(0);
-  }, [deleteAudio]);
-
-  return { isListening, transcript, finalTranscript, error, startListening, stopListening, clearTranscript, confidence: averageConfidence, isCloudMode, stream, audioBlobUrl, deleteAudio, recordingDuration };
+  return { isListening, transcript, finalTranscript, error, startListening, stopListening, clearTranscript, confidence: averageConfidence, isCloudMode, stream, audioBlobUrl, setAudioBlobUrl, deleteAudio, recordingDuration, transcribeFile, isTranscribingFile, liveAudioFeatures };
 };
 
 export default useSpeechRecognition;

@@ -1,6 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { type TranscriptEntry, type SpeakerProfile, type SpeakerId } from '../types';
+import { type TranscriptEntry, type SpeakerProfile, type SpeakerId, type ReframingResult } from '../types';
 import Tooltip from './Tooltip';
+import { CENSOR_WORDS } from '../constants';
+
+const censorProfanity = (text: string, shouldCensor: boolean): string => {
+    if (!shouldCensor || !text) {
+        return text;
+    }
+    const regex = new RegExp(`\\b(${Array.from(CENSOR_WORDS).join('|')})\\b`, 'gi');
+    return text.replace(regex, (match) => '*'.repeat(match.length));
+};
 
 const SpeakerTag: React.FC<{ profile: SpeakerProfile; onClick: (speakerId: SpeakerId) => void }> = ({ profile, onClick }) => {
   const speakerNum = profile.id.replace('S', '');
@@ -23,10 +32,11 @@ interface ActionsMenuProps {
     speakerProfiles: Record<SpeakerId, SpeakerProfile>;
     onTranslate: (entryId: string) => void;
     onReassign: (entryId: string, newSpeakerId: SpeakerId) => void;
+    onReframe: (entryId: string) => void;
     onClose: () => void;
 }
 
-const ActionsMenu: React.FC<ActionsMenuProps> = ({ entry, speakerProfiles, onTranslate, onReassign, onClose }) => {
+const ActionsMenu: React.FC<ActionsMenuProps> = ({ entry, speakerProfiles, onTranslate, onReassign, onReframe, onClose }) => {
     const menuRef = useRef<HTMLDivElement>(null);
     const [copied, setCopied] = useState(false);
 
@@ -42,8 +52,8 @@ const ActionsMenu: React.FC<ActionsMenuProps> = ({ entry, speakerProfiles, onTra
         };
     }, [onClose]);
 
-    const handleTranslate = () => {
-        onTranslate(entry.id);
+    const handleAction = (action: () => void) => {
+        action();
         onClose();
     };
     
@@ -56,11 +66,6 @@ const ActionsMenu: React.FC<ActionsMenuProps> = ({ entry, speakerProfiles, onTra
         });
     };
 
-    const handleReassign = (newSpeakerId: SpeakerId) => {
-        onReassign(entry.id, newSpeakerId);
-        onClose();
-    };
-
     return (
         <div 
             ref={menuRef}
@@ -68,7 +73,13 @@ const ActionsMenu: React.FC<ActionsMenuProps> = ({ entry, speakerProfiles, onTra
         >
             <ul className="text-sm text-slate-200 divide-y divide-slate-700/50">
                 <li>
-                    <button onClick={handleTranslate} className="w-full text-left px-3 py-2 hover:bg-slate-700/50 flex items-center gap-3 transition-colors rounded-t-lg">
+                    <button onClick={() => handleAction(() => onReframe(entry.id))} className="w-full text-left px-3 py-2 hover:bg-slate-700/50 flex items-center gap-3 transition-colors rounded-t-lg">
+                        <i className="fas fa-brain w-4 text-center text-[var(--color-primary)]"></i> 
+                        <span>Reframe</span>
+                    </button>
+                </li>
+                <li>
+                    <button onClick={() => handleAction(() => onTranslate(entry.id))} className="w-full text-left px-3 py-2 hover:bg-slate-700/50 flex items-center gap-3 transition-colors">
                         <i className="fas fa-language w-4 text-center text-[var(--color-primary)]"></i> 
                         <span>Translate</span>
                     </button>
@@ -86,7 +97,7 @@ const ActionsMenu: React.FC<ActionsMenuProps> = ({ entry, speakerProfiles, onTra
                         {Object.values(speakerProfiles).map(p => (
                             <button 
                                 key={p.id} 
-                                onClick={() => handleReassign(p.id)} 
+                                onClick={() => handleAction(() => onReassign(entry.id, p.id))} 
                                 className="w-full text-left px-2 py-1.5 hover:bg-slate-700/50 rounded-md flex items-center gap-2 whitespace-nowrap transition-colors"
                             >
                                 <div className="w-4 h-4 rounded-full flex-shrink-0" style={{backgroundColor: p.color}} />
@@ -111,11 +122,16 @@ interface TranscriptEntryComponentProps {
     onReassignSpeaker: (entryId: string, newSpeakerId: SpeakerId) => void;
     onUpdateEntryText: (entryId: string, newText: string) => void;
     transcriptTextSize: 'sm' | 'base' | 'lg' | 'xl';
+    reframingResult?: ReframingResult;
+    onReframeEntry: (entryId: string) => void;
+    onOpenCodex: (tab: string, entryId: string) => void;
+    censorLanguage: boolean;
 }
 
 const TranscriptEntryComponent: React.FC<TranscriptEntryComponentProps> = ({
     entry, speakerProfiles, showTimestamps, diarizationEnabled, onSpeakerTagClick,
-    renderHighlightedText, onTranslateEntry, onReassignSpeaker, onUpdateEntryText, transcriptTextSize
+    renderHighlightedText, onTranslateEntry, onReassignSpeaker, onUpdateEntryText, transcriptTextSize,
+    reframingResult, onReframeEntry, onOpenCodex, censorLanguage
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState(entry.text);
@@ -163,6 +179,8 @@ const TranscriptEntryComponent: React.FC<TranscriptEntryComponentProps> = ({
         textarea.style.height = `${textarea.scrollHeight}px`;
     };
 
+    const textToRender = censorProfanity(entry.text, censorLanguage);
+
     return (
         <div className={`relative flex flex-col sm:flex-row items-start gap-x-3 gap-y-1 p-2 rounded-lg hover:bg-slate-800/50 transition-colors fade-in-entry pb-4 group ${activeMenuEntryId === entry.id ? 'z-30' : ''}`}>
             {showTimestamps && (
@@ -190,10 +208,33 @@ const TranscriptEntryComponent: React.FC<TranscriptEntryComponentProps> = ({
                             />
                         ) : (
                             <>
-                                <p onClick={() => setIsEditing(true)} className={`text-slate-300 leading-relaxed cursor-pointer ${textSizeClasses[transcriptTextSize]}`}>{renderHighlightedText(entry.text)}</p>
+                                <p onClick={() => setIsEditing(true)} className={`text-slate-300 leading-relaxed cursor-pointer ${textSizeClasses[transcriptTextSize]}`}>{renderHighlightedText(textToRender)}</p>
                                 {entry.isTranslating && <p className="text-sm text-slate-500 italic mt-1 pl-2">Translating...</p>}
                                 {entry.translatedText && <p className="text-sm text-slate-400 italic mt-1 pl-2 border-l-2 border-slate-600">{entry.translatedText}</p>}
                             </>
+                        )}
+                         {reframingResult && (
+                            <div className="reframing-panel">
+                                {reframingResult.isLoading ? (
+                                    <div className="reframing-loader">
+                                        <i className="fas fa-spinner fa-spin text-sm text-[var(--color-secondary)]"></i>
+                                        <span>Ymzo is contemplating...</span>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2 text-sm">
+                                        <div>
+                                            <span className="font-semibold text-slate-400">Thought Pattern: </span>
+                                            <button onClick={() => onOpenCodex('patterns', reframingResult.codexLink)} className="reframing-pattern-link">
+                                                {reframingResult.thoughtPattern}
+                                            </button>
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-slate-400">Reframed Perspective:</p>
+                                            <p className="text-purple-200 italic">"{reframingResult.reframedText}"</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
                 </div>
@@ -206,7 +247,7 @@ const TranscriptEntryComponent: React.FC<TranscriptEntryComponentProps> = ({
                 </Tooltip>
             </div>
             {activeMenuEntryId === entry.id && (
-                <ActionsMenu entry={entry} speakerProfiles={speakerProfiles} onTranslate={onTranslateEntry} onReassign={onReassignSpeaker} onClose={() => setActiveMenuEntryId(null)} />
+                <ActionsMenu entry={entry} speakerProfiles={speakerProfiles} onTranslate={onTranslateEntry} onReassign={onReassignSpeaker} onReframe={onReframeEntry} onClose={() => setActiveMenuEntryId(null)} />
             )}
             <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-0 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/80 to-transparent transition-all duration-500 group-hover:w-[95%] shadow-[0_0_8px_var(--color-primary)]"></div>
         </div>
@@ -232,13 +273,18 @@ interface TranscriptDisplayProps {
   onUpdateEntryText: (entryId: string, newText: string) => void;
   transcriptTextSize: 'sm' | 'base' | 'lg' | 'xl';
   isTrueMobile: boolean;
+  reframingResults: Record<string, ReframingResult>;
+  onReframeEntry: (entryId: string) => void;
+  onOpenCodex: (tab: string, entryId: string) => void;
+  censorLanguage: boolean;
 }
 
 const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
   entries, isListening, liveText, liveTextState, activeSpeaker, speakerProfiles,
   showTimestamps, diarizationEnabled, onSpeakerTagClick, searchQuery, highlightedTopic,
   containerRef, endRef, onTranslateEntry, onReassignSpeaker, onUpdateEntryText,
-  transcriptTextSize, isTrueMobile
+  transcriptTextSize, isTrueMobile, reframingResults, onReframeEntry, onOpenCodex,
+  censorLanguage
 }) => {
   const textSizeClasses = { sm: 'text-sm', base: 'text-base', lg: 'text-lg', xl: 'text-2xl' };
 
@@ -275,6 +321,8 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
     return <>{nodes}</>;
   }, [searchQuery, highlightedTopic]);
 
+  const liveTextToRender = censorProfanity(liveText, censorLanguage);
+
   return (
     <div ref={containerRef} className="h-full overflow-y-auto pr-2">
       {entries.map((entry) => (
@@ -290,6 +338,10 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
           onReassignSpeaker={onReassignSpeaker}
           onUpdateEntryText={onUpdateEntryText}
           transcriptTextSize={transcriptTextSize}
+          reframingResult={reframingResults[entry.id]}
+          onReframeEntry={onReframeEntry}
+          onOpenCodex={onOpenCodex}
+          censorLanguage={censorLanguage}
         />
       ))}
       
@@ -332,7 +384,7 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
                       )}
                       <div className="flex-1">
                           <p className={`italic leading-relaxed text-slate-300 ${textSizeClasses[transcriptTextSize]}`}>
-                              {renderHighlightedText(liveText)}
+                              {renderHighlightedText(liveTextToRender)}
                               {liveTextState === 'visible' && <span className="inline-block w-0.5 h-4 bg-white/70 ml-1 animate-[cursor-blink_1s_step-end_infinite]"></span>}
                           </p>
                       </div>

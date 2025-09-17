@@ -7,6 +7,10 @@ export const trinkets = [
       keywords: ["Transformation", "Power", "Protection", "Bold Actions"],
       description:
         "The Dragon trinket channels a fiery, transformative energy, symbolizing power, protection, and the boldness required to overcome challenges.",
+      image: "https://deffy.me/media/ACU/trinkets/dragon.png",
+      vector: "Power, guardianship, catalytic courage",
+      whenToDeploy: "Facing apex challenges; rallying resolve",
+      shadowCost: "Hubris; collateral scorch"
     },
     {
       id: "crystal",
@@ -15,6 +19,10 @@ export const trinkets = [
       keywords: ["Clarity", "Focus", "Amplification", "Illumination"],
       description:
         "The Quartz Crystal brings clarity, focus, and amplification of inner light, helping reveal hidden aspects of a situation.",
+      image: "https://deffy.me/media/ACU/trinkets/quartz.png",
+      vector: "Clarity, focus, amplification",
+      whenToDeploy: "Signal purification; convergence timing",
+      shadowCost: "Brittleness; harsh lucidity"
     },
     {
       id: "staff",
@@ -23,6 +31,10 @@ export const trinkets = [
       keywords: ["Guidance", "Wisdom", "Support", "Mentorship"],
       description:
         "The Staff trinket represents guidance, wisdom, and support, helping to clarify your path and reminding you to seek advice from trusted mentors.",
+      image: "https://deffy.me/media/ACU/trinkets/staff.png",
+      vector: "Authority into service",
+      whenToDeploy: "Convert command → care in action",
+      shadowCost: "Martyr complex"
     },
     {
       id: "crystal-ball",
@@ -31,6 +43,10 @@ export const trinkets = [
       keywords: ["Intuition", "Foresight", "Future Planning", "Inner Vision"],
       description:
         "The Crystal Ball enhances intuition and foresight, emphasizing the value of inner vision and preparation for future events.",
+      image: "https://deffy.me/media/ACU/trinkets/crystalball.png",
+      vector: "Probable horizons, foresight",
+      whenToDeploy: "Timing questions; horizon scanning",
+      shadowCost: "Fate‑fixation"
     },
     {
       id: "owl",
@@ -39,6 +55,10 @@ export const trinkets = [
       keywords: ["Wisdom", "Insight", "Knowledge", "Hidden Truths"],
       description:
         "The Owl trinket embodies wisdom, insight, and the unveiling of hidden truths, signifying a deep, intuitive understanding of life's mysteries.",
+      image: "https://deffy.me/media/ACU/trinkets/owl.png",
+      vector: "Witness, pattern‑recognition",
+      whenToDeploy: "When the room is noisy with certainty",
+      shadowCost: "Analysis paralysis"
     },
     {
       id: "heart",
@@ -47,6 +67,10 @@ export const trinkets = [
       keywords: ["Love", "Compassion", "Emotional Connection", "Relationships"],
       description:
         "The Heart trinket focuses on love, compassion, and emotional connections, emphasizing the significance of relationships and inner emotional well-being.",
+      image: "https://deffy.me/media/ACU/trinkets/heart.png",
+      vector: "Compassion, rapport",
+      whenToDeploy: "Reconciliation; restoring consent",
+      shadowCost: "Enmeshment; boundary melt"
     },
     {
       id: "star",
@@ -55,6 +79,10 @@ export const trinkets = [
       keywords: ["Hope", "Inspiration", "Dreams", "Goals", "Positivity"],
       description:
         "The Star trinket symbolizes hope, inspiration, and the pursuit of dreams, encouraging you to maintain a positive outlook even in challenging times.",
+      image: "https://deffy.me/media/ACU/trinkets/star.png",
+      vector: "Aspiration, guidance",
+      whenToDeploy: "Goal‑setting; morale alignment",
+      shadowCost: "Destiny delusion; glitter over grit"
     },
     {
       id: "moon",
@@ -69,6 +97,10 @@ export const trinkets = [
       ],
       description:
         "The Moon trinket represents intuition, mystery, and the exploration of the unconscious, drawing your attention to hidden realms within yourself.",
+      image: "https://deffy.me/media/ACU/trinkets/moon.png",
+      vector: "Intuition, cycles",
+      whenToDeploy: "Liminal work; dream navigation",
+      shadowCost: "Ambiguity addiction; drift"
     },
     {
       id: "tree",
@@ -77,6 +109,10 @@ export const trinkets = [
       keywords: ["Growth", "Stability", "Nature", "Development", "Grounding"],
       description:
         "The Tree trinket embodies growth, stability, and connection to nature, emphasizing personal development while staying grounded in your roots.",
+      image: "https://deffy.me/media/ACU/trinkets/tree.png",
+      vector: "Growth, rooting",
+      whenToDeploy: "Stabilization; legacy planting",
+      shadowCost: "Inertia; over‑rooting"
     },
     {
       id: "crown",
@@ -91,6 +127,10 @@ export const trinkets = [
       ],
       description:
         "The Crown trinket introduces themes of leadership, authority, and success, highlighting your potential to take charge and be recognized for your achievements.",
+      image: "https://deffy.me/media/ACU/trinkets/crown.png",
+      vector: "Sovereignty, burden",
+      whenToDeploy: "Authority with accountability",
+      shadowCost: "Authoritarian drift"
     },
     {
       id: "clover",
@@ -105,6 +145,10 @@ export const trinkets = [
       ],
       description:
         "The Lucky Clover trinket brings luck and serendipity into your reading, indicating unexpected positive outcomes and fortunate opportunities.",
+      image: "https://deffy.me/media/ACU/trinkets/luckyclover.png",
+      vector: "Serendipity, low‑friction paths",
+      whenToDeploy: "Opening probabilities; soft landings",
+      shadowCost: "Complacency; unearned shortcuts"
     },
     {
       id: "key",
@@ -119,6 +163,10 @@ export const trinkets = [
       ],
       description:
         "The Key trinket symbolizes unlocking potential and discovering new paths, revealing hidden solutions to your challenges.",
+      image: "https://deffy.me/media/ACU/trinkets/key.png",
+      vector: "Access, consent",
+      whenToDeploy: "Gatekeeping; unlocking shared spaces",
+      shadowCost: "Trespass normalization"
     },
     {
       id: "ear",
@@ -133,6 +181,10 @@ export const trinkets = [
       ],
       description:
         "The Ear trinket emphasizes the importance of listening and effective communication, prompting you to pay attention to subtle messages around you.",
+      image: "https://deffy.me/media/ACU/trinkets/ear.png",
+      vector: "Listening, signal fidelity",
+      whenToDeploy: "Conflict mediation; silent stakeholders",
+      shadowCost: "Surveillance vibe; passivity"
     },
     {
       id: "anchor",
@@ -147,6 +199,10 @@ export const trinkets = [
       ],
       description:
         "The Anchor trinket symbolizes stability, security, and grounding, helping you maintain a steady course even in turbulent times.",
+      image: "https://deffy.me/media/ACU/trinkets/anchor.png",
+      vector: "Grounding, continuity",
+      whenToDeploy: "Turbulence mitigation; return points",
+      shadowCost: "Stagnation; sunk‑cost"
     },
     {
       id: "compass",
@@ -163,5 +219,9 @@ export const trinkets = [
       ],
       description:
         "The Compass trinket represents guidance, direction, and realignment, helping you find your true path when you feel lost or uncertain.",
+      image: "https://deffy.me/media/ACU/trinkets/compass.png",
+      vector: "Orientation, trueing",
+      whenToDeploy: "Lost teams; mission drift correction",
+      shadowCost: "Rigidity; over‑mapping"
     },
   ];

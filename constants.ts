@@ -9,6 +9,11 @@ export const FILLER_WORDS: Set<string> = new Set([
   "just", "yeah", "hmm", "erm", "mmm", "okay"
 ]);
 
+export const CENSOR_WORDS: Set<string> = new Set([
+  'fuck', 'fucking', 'shit', 'shitting', 'bitch', 'bitching', 'cunt', 
+  'asshole', 'dick', 'pussy', 'damn'
+]);
+
 export const PROACTIVE_ASSISTANT = {
   GLOBAL_COOLDOWN_MS: 90 * 1000,
   SILENCE_THRESHOLD_MS: 15 * 1000,

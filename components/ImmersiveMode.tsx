@@ -5,6 +5,15 @@ import CursorTrail from './CursorTrail';
 import { useKonamiCode } from '../hooks/useKonamiCode';
 import { AudioContextManager } from '../utils/AudioContextManager';
 import { useMediaQuery } from '../hooks/useMediaQuery';
+import { CENSOR_WORDS } from '../constants';
+
+const censorProfanity = (text: string, shouldCensor: boolean): string => {
+    if (!shouldCensor || !text) {
+        return text;
+    }
+    const regex = new RegExp(`\\b(${Array.from(CENSOR_WORDS).join('|')})\\b`, 'gi');
+    return text.replace(regex, (match) => '*'.repeat(match.length));
+};
 
 interface ImmersiveModeProps {
   isListening: boolean;
@@ -17,6 +26,7 @@ interface ImmersiveModeProps {
   avatarEmotion: Emotion;
   avatarMap: Record<Emotion, string>;
   isTrueMobile: boolean;
+  censorLanguage: boolean;
 }
 
 type VisualizerType = 'waveform' | 'bars';
@@ -435,7 +445,7 @@ const getTransitionClasses = (from: Emotion, to: Emotion): { out: string, in: st
     return transition;
 };
 
-const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEntries, interimTranscript, stream, themeColors, onExit, onToggleListen, avatarEmotion, avatarMap, isTrueMobile }) => {
+const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEntries, interimTranscript, stream, themeColors, onExit, onToggleListen, avatarEmotion, avatarMap, isTrueMobile, censorLanguage }) => {
   const [isFullscreen, setIsFullscreen] = useState(!!(document.fullscreenElement || (document as any).webkitFullscreenElement));
   
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -603,6 +613,8 @@ const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEn
       fading: 'opacity-0 transition-opacity duration-500 ease-out'
   }[liveTextState];
 
+  const liveTextToRender = censorProfanity(liveText, censorLanguage);
+
   return (
     <div ref={containerRef} className="fixed inset-0 bg-[#05080a] text-white flex flex-col items-center justify-center overflow-hidden animate-[immersive-fade-in_0.5s_ease-out] [animation:breathing-bg_20s_ease-in-out_infinite]">
       {isRaveMode && <div className="absolute inset-0 z-[9998] animate-[rave-bg_0.5s_linear_infinite]" />}
@@ -706,14 +718,14 @@ const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEn
                           className={`transition-all duration-500 ease-out absolute left-0 right-0 ${animationClass}`}
                           style={{ bottom: `${bottomRem}rem` }}
                       >
-                          {entry.text}
+                          {censorProfanity(entry.text, censorLanguage)}
                       </p>
                   );
               })}
             </div>
             <div className="min-h-[4rem] text-2xl sm:text-4xl font-semibold text-slate-100 p-2 sm:p-4 bg-black/20 backdrop-blur-sm rounded-xl border border-slate-700/50 shadow-lg">
               <p className={liveTextClassName}>
-                {liveText || placeholderText}
+                {liveTextToRender || placeholderText}
                 {isListening && liveTextState === 'visible' && <span className="inline-block w-1 h-8 sm:h-10 bg-[var(--color-accent)] ml-1 animate-[cursor-blink_1s_step-end_infinite]"></span>}
               </p>
             </div>

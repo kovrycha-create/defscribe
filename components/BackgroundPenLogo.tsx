@@ -26,6 +26,7 @@ const BackgroundPenLogo: React.FC<BackgroundPenLogoProps> = ({ isListening, isSu
     const scribblePathRef = useRef<SVGPathElement>(null);
     const lastPointRef = useRef({ x: 128, y: 220 });
     const lastTranscriptLengthRef = useRef(0);
+    const [userScale, setUserScale] = useState(0);
 
     const [scribbleState, setScribbleState] = useState({
         path: 'M 128 220',
@@ -35,6 +36,26 @@ const BackgroundPenLogo: React.FC<BackgroundPenLogoProps> = ({ isListening, isSu
     
     const [isFadingOut, setIsFadingOut] = useState(false);
     const prevIsListening = usePrevious(isListening);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement;
+            if (target.matches('input, textarea, [contenteditable="true"]')) {
+                return;
+            }
+
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setUserScale(s => Math.min(7, s + 1));
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setUserScale(s => Math.max(-8, s - 1));
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
 
     useEffect(() => {
         if (prevIsListening && !isListening) {
@@ -177,6 +198,11 @@ const BackgroundPenLogo: React.FC<BackgroundPenLogoProps> = ({ isListening, isSu
         setEasterEgg(true);
         setTimeout(() => setEasterEgg(false), 1500);
     };
+    
+    const finalScale = useMemo(() => {
+        const baseScale = isExpanded ? 1.25 : 1.8;
+        return baseScale + (userScale * 0.1);
+    }, [isExpanded, userScale]);
 
     return (
         <div 
@@ -184,7 +210,10 @@ const BackgroundPenLogo: React.FC<BackgroundPenLogoProps> = ({ isListening, isSu
             style={{ opacity: isListening || isSummarizing ? '1' : '0.7' }}
             aria-hidden="true"
         >
-            <div className={`relative ${isMobileView ? 'w-48 h-48' : 'w-72 h-72'} transition-transform duration-500 ease-in-out ${isExpanded ? 'scale-[1.25]' : 'scale-[1.8]'}`}>
+            <div 
+                className={`relative ${isMobileView ? 'w-48 h-48' : 'w-72 h-72'} transition-transform duration-500 ease-in-out`}
+                style={{ transform: `scale(${finalScale})` }}
+            >
                 <img
                     src="https://static.wixstatic.com/media/2ef790_8834bc46053541f9b07873cdb91f5649~mv2.png"
                     alt="DefScribe Pen"

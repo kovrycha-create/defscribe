@@ -1,13 +1,12 @@
-
-
-
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { 
     generateSummary, 
     generateTopics, 
     generateActionItems, 
     generateSnippets,
-    generateTitles
+    generateTitles,
+    generateCosmicReading,
+    generateAuraData,
 } from '../services/geminiService';
 import { 
     type SummaryStyle, 
@@ -19,6 +18,9 @@ import {
     type DiarizationSegment,
     type SpeechAnalytics,
     type GeneratedTitle,
+    type TopicSegment,
+    type CosmicReading,
+    type AuraData,
 } from '../types';
 import { type ToastType } from '../components/Toast';
 import { FILLER_WORDS } from '../constants';
@@ -49,9 +51,13 @@ const useAnalytics = ({
     const [summaryStyle, setSummaryStyle] = useState<SummaryStyle | null>(null);
     const [actionItems, setActionItems] = useState<ActionItem[]>([]);
     const [snippets, setSnippets] = useState<Snippet[]>([]);
-    const [topics, setTopics] = useState<string[]>([]);
+    const [topics, setTopics] = useState<TopicSegment[]>([]);
     const [titles, setTitles] = useState<GeneratedTitle[]>([]);
     const [speechAnalytics, setSpeechAnalytics] = useState<Partial<SpeechAnalytics>>({});
+    const [cosmicReading, setCosmicReading] = useState<CosmicReading | null>(null);
+    const [isReading, setIsReading] = useState(false);
+    const [auraData, setAuraData] = useState<AuraData | null>(null);
+    const [isAnalyzingAura, setIsAnalyzingAura] = useState(false);
 
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isSummarizing, setIsSummarizing] = useState(false);
@@ -64,6 +70,37 @@ const useAnalytics = ({
         transcriptEntries,
         wpm: speechAnalytics.wpm || 0,
     });
+    
+    const auraAnalysisTimer = useRef<number | null>(null);
+
+    const handleAuraAnalysis = useCallback(async () => {
+        if (!isListening || isAnalyzingAura) return;
+        const recentTranscript = transcriptEntries.slice(-3).map(e => e.text).join(' ') + ' ' + interimTranscript;
+        if (recentTranscript.trim().length < 20) return;
+
+        setIsAnalyzingAura(true);
+        try {
+            const result = await generateAuraData(recentTranscript);
+            setAuraData(result);
+        } catch (error) {
+            console.warn("Aura analysis failed:", error);
+        } finally {
+            setIsAnalyzingAura(false);
+        }
+    }, [isListening, isAnalyzingAura, transcriptEntries, interimTranscript]);
+    
+    useEffect(() => {
+        if (isListening) {
+            if (auraAnalysisTimer.current) clearInterval(auraAnalysisTimer.current);
+            auraAnalysisTimer.current = window.setInterval(handleAuraAnalysis, 7000); // Analyze every 7 seconds
+        } else {
+            if (auraAnalysisTimer.current) clearInterval(auraAnalysisTimer.current);
+            setAuraData(null); // Clear aura data when not listening
+        }
+        return () => {
+            if (auraAnalysisTimer.current) clearInterval(auraAnalysisTimer.current);
+        };
+    }, [isListening, handleAuraAnalysis]);
 
 
     useEffect(() => {
@@ -197,9 +234,10 @@ const useAnalytics = ({
                 generateActionItems(transcript),
                 generateSnippets(transcript)
             ]);
-
-            setTopics(topicsResult);
-            setSpeechAnalytics(prev => ({...prev, topics: topicsResult}));
+            
+            const topicsWithIds: TopicSegment[] = topicsResult.map(topic => ({...topic, id: self.crypto.randomUUID()}));
+            setTopics(topicsWithIds);
+            setSpeechAnalytics(prev => ({...prev, topics: topicsWithIds}));
             setActionItems(actionItemsResult.map(item => ({...item, id: self.crypto.randomUUID(), speakerId: mapSpeakerLabelToId(item.speakerLabel) })));
             setSnippets(snippetsResult.map(item => ({ ...item, id: self.crypto.randomUUID(), speakerId: mapSpeakerLabelToId(item.speakerLabel) })));
             
@@ -212,6 +250,26 @@ const useAnalytics = ({
         }
     }, [addToast]);
 
+    const handleGenerateCosmicReading = useCallback(async (transcript: string) => {
+        if (transcript.trim().length < 100) {
+            addToast('Not enough content', 'A meaningful reading requires more transcript.', 'warning');
+            return;
+        }
+        setIsReading(true);
+        addToast('Consulting the Oracle...', 'Generating a Cosmic Reading from your transcript.', 'processing');
+        try {
+            const reading = await generateCosmicReading(transcript);
+            setCosmicReading(reading);
+            addToast('Reading Complete', 'Your Cosmic Reading is ready.', 'success');
+        } catch (e) {
+            const message = e instanceof Error ? e.message : "The cosmic currents are unclear.";
+            addToast('Oracle Error', message, 'error');
+        } finally {
+            setIsReading(false);
+        }
+    }, [addToast]);
+
+
     const clearAnalytics = useCallback(() => {
         setSummary('Your transcript summary will appear here.');
         setSummaryStyle(null);
@@ -220,7 +278,21 @@ const useAnalytics = ({
         setTopics([]);
         setTitles([]);
         setSpeechAnalytics({});
+        setCosmicReading(null);
+        setAuraData(null);
     }, []);
+
+    const loadAnalyticsData = useCallback((data: any) => {
+        setSummary(data.summary || 'Your transcript summary will appear here.');
+        setActionItems(data.actionItems || []);
+        setSnippets(data.snippets || []);
+        setTopics(data.topics || []);
+        setTitles(data.titles || []);
+        setSpeechAnalytics(data.speechAnalytics || {});
+        setCosmicReading(null);
+        setAuraData(null);
+    }, []);
+
 
     return {
         summary,
@@ -229,6 +301,7 @@ const useAnalytics = ({
         snippets,
         topics,
         titles,
+        setTitles,
         isAnalyzing,
         isSummarizing,
         isGeneratingTitles,
@@ -238,6 +311,11 @@ const useAnalytics = ({
         generateAllAnalytics,
         clearAnalytics,
         handleGenerateTitles,
+        loadAnalyticsData,
+        handleGenerateCosmicReading,
+        isReading,
+        cosmicReading,
+        auraData,
     };
 };
 

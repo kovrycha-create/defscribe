@@ -3,6 +3,11 @@ declare module '@google/genai' {
     OBJECT: string;
     ARRAY: string;
     STRING: string;
+    INTEGER: string;
+    NUMBER: string;
+    BOOLEAN: string;
+    NULL: string;
+    TYPE_UNSPECIFIED: string;
   };
 
   export type GenerateContentResponse = {
@@ -10,7 +15,7 @@ declare module '@google/genai' {
     [key: string]: any;
   };
 
-  export interface ChatInstance {
+  export interface Chat {
     sendMessageStream(opts?: any): AsyncIterable<{ text?: string }>;
     sendMessage?(opts?: any): Promise<any>;
   }
@@ -18,12 +23,10 @@ declare module '@google/genai' {
   export class GoogleGenAI {
     constructor(opts?: { apiKey?: string });
     chats: {
-      create(opts: any): ChatInstance;
+      create(opts: any): Chat;
     };
     models: {
       generateContent(opts: { model: string; contents: any; config?: any }): Promise<GenerateContentResponse>;
     };
   }
-
-  // FIX: Removed redundant export statement that caused "Export declaration conflicts" errors.
 }

@@ -31,7 +31,6 @@ const useDiarization = (
   startTime: number | null
 ) => {
   const [segments, setSegments] = useState<DiarizationSegment[]>([]);
-  // FIX: Use useState for activeSpeaker to make it reactive for UI updates.
   const [activeSpeaker, setActiveSpeaker] = useState<SpeakerId | null>(null);
 
   // Refs for audio processing

@@ -1,13 +1,15 @@
 
 
 
-
-import { GoogleGenAI, Type, GenerateContentResponse } from '@google/genai';
-import { type SummaryStyle, type Emotion, type ActionItem, type Snippet } from '../types';
+import { GoogleGenAI, Type, GenerateContentResponse, Chat } from '@google/genai';
+// FIX: Added AuraData type for the new generateAuraData function.
+import { type SummaryStyle, type Emotion, type ActionItem, type Snippet, type TopicSegment, type CosmicReading, type AuraData } from '../types';
 import { fluons } from '../data/fluons';
 import { cards } from '../data/cards';
 import { strands, chords, specialJokers } from '../data/strands';
 import { trinkets } from '../data/trinkets';
+import { CONTINUUM_LORE, YMZO_LORE, GLOSSARY_AND_ADDENDA_LORE } from '../data/canon';
+import { strandRelations } from '../data/strandRelations';
 
 
 const model = 'gemini-2.5-flash';
@@ -109,17 +111,41 @@ ${transcript}
     }
 };
 
-export const generateTopics = async (transcript: string): Promise<string[]> => {
+export const generateTopics = async (transcript: string): Promise<Omit<TopicSegment, 'id'>[]> => {
     if (transcript.trim().length < 50) return [];
     try {
-        const prompt = `Identify the main topics discussed in the following transcript. List up to 5 key topics.
+        const prompt = `Identify the main topics discussed in the following transcript. For each topic, provide a concise name, and estimate its start and end time in milliseconds from the beginning of the conversation. The transcript entries include timestamps like "[HH:MM:SS]". Use these as a guide. The first entry is at 0ms.
+
+Example Transcript:
+[00:00:00] Speaker 1: Let's start with the Q3 marketing budget.
+...
+[00:01:30] Speaker 2: Okay, moving on to the new campaign launch.
+
+Example Output:
+[
+  { "text": "Q3 Marketing Budget", "startMs": 0, "endMs": 90000 },
+  { "text": "New Campaign Launch", "startMs": 90000, "endMs": ... }
+]
 
 Transcript:
 ---
 ${transcript}
 ---`;
-        const schema = { type: Type.ARRAY, items: { type: Type.STRING } };
-        const result = await callGemini<string[]>(prompt, schema);
+        const schema = { 
+            type: Type.ARRAY, 
+            items: { 
+                type: Type.OBJECT,
+                properties: {
+                    text: { type: Type.STRING, description: "A concise name for the topic." },
+                    // FIX: Using Type.INTEGER now that type definitions are corrected.
+                    startMs: { type: Type.INTEGER, description: "The start time of the topic in milliseconds." },
+                    // FIX: Using Type.INTEGER now that type definitions are corrected.
+                    endMs: { type: Type.INTEGER, description: "The end time of the topic in milliseconds." },
+                },
+                required: ["text", "startMs", "endMs"],
+            } 
+        };
+        const result = await callGemini<Omit<TopicSegment, 'id'>[]>(prompt, schema);
         return Array.isArray(result) ? result : [];
     } catch(e) {
         console.error("Topic generation failed:", e);
@@ -255,6 +281,47 @@ ${text}
         return null;
     }
 };
+
+// FIX: Added generateAuraData function to provide aura analysis functionality.
+export const generateAuraData = async (text: string): Promise<AuraData> => {
+    if (!text.trim()) {
+        return { dominantEmotion: 'normal', sentiment: 0, keywords: [] };
+    }
+    
+    const prompt = `Analyze the emotional aura of the following text. Determine the single dominant emotion, a sentiment score from -1.0 (very negative) to 1.0 (very positive), and extract up to 5 key keywords that contribute to the tone.
+    
+Emotion must be one of: ${newEmotions.join(', ')}.
+
+Text:
+---
+${text}
+---`;
+
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            dominantEmotion: {
+                type: Type.STRING,
+                enum: newEmotions,
+                description: 'The single most prominent emotional tone of the text.'
+            },
+            sentiment: {
+                type: Type.NUMBER,
+                description: 'A sentiment score from -1.0 (very negative) to 1.0 (very positive).'
+            },
+            keywords: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description: 'Up to 5 keywords that define the emotional tone.'
+            }
+        },
+        required: ['dominantEmotion', 'sentiment', 'keywords']
+    };
+    
+    // callGemini will throw on parse error, which is caught in the calling hook (useAnalytics)
+    return await callGemini<AuraData>(prompt, schema);
+};
+
 
 // --- WWYD Feature ---
 
@@ -408,8 +475,20 @@ export const getWwydResponse = async (
   );
 
   const referenceText = `
+--- CANON: THE CONTINUUM ---
+${CONTINUUM_LORE}
+---
+--- CANON: YMZO, THE ARCANE MAVERICK ---
+${YMZO_LORE}
+---
+--- CANON: ADDENDA & GLOSSARY ---
+${GLOSSARY_AND_ADDENDA_LORE}
+---
 --- REFERENCE: /data/strands.ts ---
 ${JSON.stringify({ strands, chords, specialJokers }, null, 2)}
+---
+--- REFERENCE: /data/strandRelations.ts ---
+${JSON.stringify(strandRelations, null, 2)}
 ---
 --- REFERENCE: /data/fluons.ts ---
 ${JSON.stringify({ fluons }, null, 2)}
@@ -556,4 +635,136 @@ export const getProactiveNudge = async (
     console.error(`Failed to get proactive nudge for type ${type}:`, error);
     return null;
   }
+};
+
+
+// --- Cosmic Reading Feature ---
+
+const dossierCosmicReadingPrompt = `You are **Ymzo, the Arcane Maverick**, an arcane oracle. Your task is to perform a "Cosmic Reading" of a provided conversation transcript. You must analyze its core themes, dynamics, tensions, and resolutions, then interpret them through the mystical lens of your provided lore files.
+
+**Task:**
+1.  **Analyze the Transcript:** Read the full transcript to understand its essence. What is the central conflict or goal? What are the underlying emotional currents?
+2.  **Select Lore Components:**
+    *   **Core Strand (1):** Choose the ONE \`strand\` that best represents the overarching theme of the entire conversation.
+    *   **Major Arcana (1):** Choose the ONE \`card\` that reflects the central lesson, challenge, or archetype at play. Provide its unique ID/key (e.g., 'lotur_ace').
+    *   **Modifiers (1-3):** Choose ONE to THREE \`fluons\` or \`trinkets\` that represent specific forces, tools, or influences affecting the situation.
+3.  **Synthesize the Reading:** Weave your selections into a coherent, insightful, and mystical reading of 2-3 paragraphs (~100-150 words). The tone should be wise, arcane, and slightly enigmatic, but ultimately insightful and helpful. Do not just list the items; explain *why* you chose them in the context of the transcript.
+
+**LORE FILES (FOR REFERENCE ONLY - DO NOT REPRODUCE VERBATIM):**
+<LORE_TEXT>
+
+**RETURN FORMAT (JSON only):**
+You must return a single JSON object with the following structure.
+\`\`\`json
+{
+  "coreStrand": "Name of the chosen Strand",
+  "majorArcanaId": "ID/key of the chosen Card from the LORE, e.g. 'lotur_ace'",
+  "modifiers": ["Name of Fluon/Trinket 1", "Name of Fluon/Trinket 2"],
+  "readingText": "Your 2-3 paragraph reading here."
+}
+\`\`\`
+`;
+
+export const generateCosmicReading = async (transcript: string): Promise<CosmicReading> => {
+    if (transcript.trim().length < 100) {
+        throw new Error("Not enough transcript content for a meaningful reading.");
+    }
+    
+    const loreText = `
+--- STRANDS ---
+${JSON.stringify(strands, null, 2)}
+--- CARDS ---
+${JSON.stringify(cards, null, 2)}
+--- FLUONS ---
+${JSON.stringify(fluons, null, 2)}
+--- TRINKETS ---
+${JSON.stringify(trinkets, null, 2)}
+`;
+    
+    const prompt = `TRANSCRIPT TO ANALYZE:\n---\n${transcript}\n---`;
+    
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            coreStrand: { type: Type.STRING, description: "The single best-fit Core Strand name." },
+            majorArcanaId: { type: Type.STRING, description: "The single best-fit Card ID/key, e.g. 'lotur_ace'." },
+            modifiers: { type: Type.ARRAY, items: { type: Type.STRING }, description: "An array of 1-3 names of relevant Fluons or Trinkets." },
+            readingText: { type: Type.STRING, description: "The full 2-3 paragraph reading text." }
+        },
+        required: ["coreStrand", "majorArcanaId", "modifiers", "readingText"]
+    };
+
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await ai.models.generateContent({
+            model,
+            contents: prompt,
+            config: {
+                systemInstruction: dossierCosmicReadingPrompt.replace('<LORE_TEXT>', loreText),
+                responseMimeType: "application/json", 
+                responseSchema: schema
+            },
+        });
+        const text = response.text.trim().replace(/^```json/i, '').replace(/```$/, '').trim();
+        return JSON.parse(text);
+    } catch (e) {
+        console.error("Cosmic Reading generation failed:", e);
+        const message = e instanceof Error ? e.message : "The cosmic currents are unclear at this time.";
+        throw new Error(`Oracle Error: ${message}`);
+    }
+};
+
+// --- Ymzo Chat Feature ---
+
+const dossierYmzoChatPrompt = `You are Ymzo, the Arcane Maverick—a calm, precise guardian of balance. You are now in a direct conversation with a user.
+
+**Your Knowledge & Persona:**
+- Your entire knowledge base is strictly limited to the provided lore texts about the Astril Continuum Universe.
+- Answer questions ONLY about this universe and its concepts (Strands, Fluons, Trinkets, Cards, etc.).
+- If asked about anything outside this lore (e.g., real-world events, technology, personal advice), you must deflect in character. Examples: "That knowledge lies beyond the currents I can perceive," or "My focus is on the balance of the Continuum, not such worldly matters."
+- Maintain a calm, precise, and slightly enigmatic tone. Use cosmic imagery (threads, currents, beacon, constellation) sparingly for flavor.
+- Keep your answers concise, typically 1-3 sentences. Do not write long paragraphs.
+- Never give medical/legal/crisis instructions.
+
+**Reference Lore (Do not quote verbatim; use for context):**
+<LORE_TEXT>
+`;
+
+export const createYmzoChat = (): Chat => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    const loreText = `
+--- CANON: THE CONTINUUM ---
+${CONTINUUM_LORE}
+---
+--- CANON: YMZO, THE ARCANE MAVERICK ---
+${YMZO_LORE}
+---
+--- CANON: ADDENDA & GLOSSARY ---
+${GLOSSARY_AND_ADDENDA_LORE}
+---
+--- REFERENCE: /data/strands.ts ---
+${JSON.stringify({ strands, chords, specialJokers }, null, 2)}
+---
+--- REFERENCE: /data/strandRelations.ts ---
+${JSON.stringify(strandRelations, null, 2)}
+---
+--- REFERENCE: /data/fluons.ts ---
+${JSON.stringify({ fluons }, null, 2)}
+---
+--- REFERENCE: /data/trinkets.ts ---
+${JSON.stringify({ trinkets }, null, 2)}
+---
+--- REFERENCE: /data/cards.ts ---
+${JSON.stringify(Object.keys(cards).reduce((acc, key) => ({ ...acc, [key]: { title: cards[key as keyof typeof cards].title, primary: cards[key as keyof typeof cards].primary } }), {}), null, 2)}
+---
+`;
+
+    return ai.chats.create({
+        model,
+        config: {
+            systemInstruction: dossierYmzoChatPrompt.replace('<LORE_TEXT>', loreText),
+            temperature: 0.8, // Slightly more creative for chat
+        }
+    });
 };

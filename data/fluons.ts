@@ -9,6 +9,7 @@ export const fluons = {
         description:
           "Magnifies the qualities or influences present in the reading.",
         keywords: ["Boost", "Intensify", "Magnify", "Elevate"],
+        image: "https://deffy.me/media/ACU/fluons/FoAmplification.png",
       },
       {
         id: "momentum",
@@ -17,6 +18,7 @@ export const fluons = {
         symbol: "➳",
         description: "Propels energy forward, providing a kinetic drive.",
         keywords: ["Drive", "Acceleration", "Impulse", "Thrust"],
+        image: "https://deffy.me/media/ACU/fluons/FoMomentum.png",
       },
       {
         id: "expansion",
@@ -26,6 +28,7 @@ export const fluons = {
         description:
           "Broadens the scope of influence, allowing opportunities to spread.",
         keywords: ["Growth", "Spread", "Widen", "Amplify"],
+        image: "https://deffy.me/media/ACU/fluons/FoExpansion.png",
       },
       {
         id: "convergence",
@@ -35,6 +38,7 @@ export const fluons = {
         description:
           "Draws separate energies together, creating a unified force.",
         keywords: ["Unify", "Merge", "Coalesce", "Integrate"],
+        image: "https://deffy.me/media/ACU/fluons/FoConvergence.png",
       },
       {
         id: "liberation",
@@ -44,6 +48,7 @@ export const fluons = {
         description:
           "Breaks free from constraints, unleashing hidden potential.",
         keywords: ["Release", "Freedom", "Emancipation", "Unshackle"],
+        image: "https://deffy.me/media/ACU/fluons/FoLiberation.png",
       },
       {
         id: "attraction",
@@ -53,6 +58,7 @@ export const fluons = {
         description:
           "Draws favorable energies and opportunities toward the querent.",
         keywords: ["Magnetism", "Draw", "Lure", "Entice"],
+        image: "https://deffy.me/media/ACU/fluons/FoAttraction.png",
       },
       {
         id: "synergy",
@@ -61,6 +67,7 @@ export const fluons = {
         symbol: "∞",
         description: "Enhances the collaborative effect of multiple energies.",
         keywords: ["Harmony", "Fusion", "Unison", "Cooperative"],
+        image: "https://deffy.me/media/ACU/fluons/FoSynergy.png",
       },
       {
         id: "endurance",
@@ -69,6 +76,7 @@ export const fluons = {
         symbol: "⍟",
         description: "Provides lasting strength and sustainability.",
         keywords: ["Resilience", "Stamina", "Longevity", "Persistence"],
+        image: "https://deffy.me/media/ACU/fluons/FoEndurance.png",
       },
     ],
     shadow: [
@@ -79,6 +87,7 @@ export const fluons = {
         symbol: "⚡",
         description: "A sudden, intense burst of energy.",
         keywords: ["Burst", "Spike", "Eruption", "Outpouring"],
+        image: "https://deffy.me/media/ACU/fluons/FoSurge.png",
       },
       {
         id: "chaos",
@@ -87,6 +96,7 @@ export const fluons = {
         symbol: "⚒",
         description: "Embodies complete disorder and randomness.",
         keywords: ["Disorder", "Mayhem", "Anarchy", "Pandemonium"],
+        image: "https://deffy.me/media/ACU/fluons/FoChaos.png",
       },
       {
         id: "disruption",
@@ -96,6 +106,7 @@ export const fluons = {
         description:
           "Interrupts the normal flow of energy, breaking established patterns.",
         keywords: ["Interruption", "Disturbance", "Break", "Upheaval"],
+        image: "https://deffy.me/media/ACU/fluons/FoDisruption.png",
       },
       {
         id: "divergence",
@@ -105,6 +116,7 @@ export const fluons = {
         description:
           "Splits energy into multiple, often conflicting directions.",
         keywords: ["Split", "Bifurcate", "Deviate", "Separate"],
+        image: "https://deffy.me/media/ACU/fluons/FoDivergence.png",
       },
       {
         id: "reversal",
@@ -113,6 +125,7 @@ export const fluons = {
         symbol: "⥮",
         description: "Inverts the current state or expected outcome.",
         keywords: ["Inversion", "Flip", "Turnaround", "Overturn"],
+        image: "https://deffy.me/media/ACU/fluons/FoReversal.png",
       },
       {
         id: "dissolution",
@@ -122,6 +135,7 @@ export const fluons = {
         description:
           "Breaks down established forms, leading to disintegration.",
         keywords: ["Decay", "Disintegrate", "Crumble", "Erode"],
+        image: "https://deffy.me/media/ACU/fluons/FoDissolution.png",
       },
       {
         id: "concealment",
@@ -130,6 +144,7 @@ export const fluons = {
         symbol: "⨂",
         description: "Masks or hides significant energy or information.",
         keywords: ["Veil", "Obscure", "Mask", "Shroud"],
+        image: "https://deffy.me/media/ACU/fluons/FoConcealment.png",
       },
       {
         id: "escalation",
@@ -139,6 +154,7 @@ export const fluons = {
         description:
           "Intensifies disruptive forces, leading to rapid increase in chaos.",
         keywords: ["Intensify", "Amplify", "Heighten", "Accelerate"],
+        image: "https://deffy.me/media/ACU/fluons/FoEscalation.png",
       },
     ],
     balance: [
@@ -149,6 +165,7 @@ export const fluons = {
         symbol: "≈",
         description: "Ensures smooth, continuous energy movement.",
         keywords: ["Stream", "Glide", "Continuity", "Rhythm"],
+        image: "https://deffy.me/media/ACU/fluons/FoFlow.png",
       },
       {
         id: "harmony",
@@ -158,6 +175,7 @@ export const fluons = {
         description:
           "Aligns conflicting energies to create peaceful coexistence.",
         keywords: ["Accord", "Unity", "Concord", "Synchrony"],
+        image: "https://deffy.me/media/ACU/fluons/FoHarmony.png",
       },
       {
         id: "resonance",
@@ -167,6 +185,7 @@ export const fluons = {
         description:
           "Establishes deep, vibrational connections between energies.",
         keywords: ["Echo", "Vibration", "Reverberation", "Symmetry"],
+        image: "https://deffy.me/media/ACU/fluons/FoResonance.png",
       },
       {
         id: "synchronization",
@@ -175,6 +194,7 @@ export const fluons = {
         symbol: "⟳",
         description: "Coordinates the precise timing of energetic forces.",
         keywords: ["Timing", "Alignment", "Coordination", "Calibration"],
+        image: "https://deffy.me/media/ACU/fluons/FoSynchronization.png",
       },
       {
         id: "integration",
@@ -183,6 +203,7 @@ export const fluons = {
         symbol: "⊹",
         description: "Blends diverse energies into a cohesive, unified whole.",
         keywords: ["Combine", "Merge", "Assimilate", "Fuse"],
+        image: "https://deffy.me/media/ACU/fluons/FoIntegration.png",
       },
       {
         id: "clarity",
@@ -191,6 +212,7 @@ export const fluons = {
         symbol: "◇",
         description: "Dispels confusion, revealing clear insight.",
         keywords: ["Lucidity", "Transparency", "Illumination", "Purity"],
+        image: "https://deffy.me/media/ACU/fluons/FoClarity.png",
       },
       {
         id: "purification",
@@ -199,6 +221,7 @@ export const fluons = {
         symbol: "⦿",
         description: "Cleanses the energy field of negative influences.",
         keywords: ["Cleanse", "Detoxify", "Refine", "Revitalize"],
+        image: "https://deffy.me/media/ACU/fluons/FoPurification.png",
       },
       {
         id: "alignment",
@@ -208,6 +231,7 @@ export const fluons = {
         description:
           "Calibrates energy so that all forces are in harmonious accord with the querent's true purpose.",
         keywords: ["Adjust", "Coordinate", "Match", "Conform"],
+        image: "https://deffy.me/media/ACU/fluons/FoAlignment.png",
       },
     ],
     revelation: [
@@ -218,6 +242,7 @@ export const fluons = {
         symbol: "⟲",
         description: "Mirrors inner truths and past influences.",
         keywords: ["Mirror", "Echo", "Reproduce", "Resonate"],
+        image: "https://deffy.me/media/ACU/fluons/FoReflection.png",
       },
       {
         id: "transition",
@@ -226,6 +251,7 @@ export const fluons = {
         symbol: "⇝",
         description: "Marks the passage from one state to another.",
         keywords: ["Shift", "Change", "Passage", "Evolution"],
+        image: "https://deffy.me/media/ACU/fluons/FoTransition.png",
       },
       {
         id: "mystery",
@@ -235,6 +261,7 @@ export const fluons = {
         description:
           "Encapsulates the allure of the unknown, inviting deeper exploration.",
         keywords: ["Enigma", "Puzzle", "Riddle", "Secret"],
+        image: "https://deffy.me/media/ACU/fluons/FoMystery.png",
       },
       {
         id: "emergence",
@@ -244,6 +271,7 @@ export const fluons = {
         description:
           "Gradually brings hidden potential and future possibilities into view.",
         keywords: ["Unfolding", "Arising", "Surfacing", "Manifestation"],
+        image: "https://deffy.me/media/ACU/fluons/FoEmergence.png",
       },
       {
         id: "veil",
@@ -253,6 +281,7 @@ export const fluons = {
         description:
           "Represents the thin barrier between the known and the unknown.",
         keywords: ["Curtain", "Shroud", "Mask", "Covering"],
+        image: "https://deffy.me/media/ACU/fluons/FoVeil.png",
       },
       {
         id: "illumination",
@@ -261,6 +290,7 @@ export const fluons = {
         symbol: "☼",
         description: "Sparks sudden clarity and insight, dispelling darkness.",
         keywords: ["Enlightenment", "Glow", "Radiance", "Epiphany"],
+        image: "https://deffy.me/media/ACU/fluons/FoIllumination.png",
       },
       {
         id: "potential",
@@ -269,6 +299,7 @@ export const fluons = {
         symbol: "⟡",
         description: "Highlights untapped capabilities and opportunities.",
         keywords: ["Capability", "Promise", "Opportunity", "Latency"],
+        image: "https://deffy.me/media/ACU/fluons/FoPotential.png",
       },
       {
         id: "insight",
@@ -278,6 +309,7 @@ export const fluons = {
         description:
           "Provides deep, intuitive understanding beyond surface logic.",
         keywords: ["Wisdom", "Perception", "Discernment", "Revelation"],
+        image: "https://deffy.me/media/ACU/fluons/FoInsight.png",
       },
     ],
   };
