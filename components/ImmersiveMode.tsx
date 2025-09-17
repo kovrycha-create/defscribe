@@ -4,7 +4,6 @@ import Tooltip from './Tooltip';
 import CursorTrail from './CursorTrail';
 import { useKonamiCode } from '../hooks/useKonamiCode';
 import { AudioContextManager } from '../utils/AudioContextManager';
-import { useMediaQuery } from '../hooks/useMediaQuery';
 import { CENSOR_WORDS } from '../constants';
 
 const censorProfanity = (text: string, shouldCensor: boolean): string => {
@@ -472,30 +471,17 @@ const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEn
   type LiveTextState = 'visible' | 'holding' | 'fading';
   const [liveTextState, setLiveTextState] = useState<LiveTextState>('visible');
   const [liveText, setLiveText] = useState('');
-  const prevInterimTranscript = usePrevious(interimTranscript);
-  const prevTranscriptEntriesLength = usePrevious(transcriptEntries.length) ?? 0;
-  const [lastAddedEntryId, setLastAddedEntryId] = useState<string | null>(null);
-
+            const prevInterimTranscript = usePrevious(interimTranscript);
   const containerRef = useRef<HTMLDivElement>(null);
   const { analyser } = useAudioProcessor(isListening, stream);
 
-  const isSmScreen = useMediaQuery('(min-width: 640px)');
-  // text-lg has 1.75rem line-height. sm:text-2xl has 2rem line-height.
-  // The original container had space-y-2, which is a 0.5rem margin.
-  const itemTotalHeightRem = isSmScreen ? 2.0 + 0.5 : 1.75 + 0.5;
+    // responsiveness handled via CSS; media hook not required here
 
   useKonamiCode(() => {
     setIsRaveMode(true);
     setTimeout(() => setIsRaveMode(false), 5000);
   });
   
-  useEffect(() => {
-    if (transcriptEntries.length > prevTranscriptEntriesLength) {
-        setLastAddedEntryId(transcriptEntries[transcriptEntries.length - 1].id);
-    } else if (transcriptEntries.length === 0 && prevTranscriptEntriesLength > 0) {
-        setLastAddedEntryId(null);
-    }
-  }, [transcriptEntries, prevTranscriptEntriesLength]);
   
   useEffect(() => {
     if (interimTranscript) {
@@ -518,7 +504,6 @@ const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEn
           fadeTimer = setTimeout(() => {
               setLiveText('');
               setLiveTextState('visible');
-              setLastAddedEntryId(null);
           }, 500);
       }
       return () => {
@@ -609,15 +594,17 @@ const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEn
     return () => cancelAnimationFrame(animationFrameId);
   }, [analyser]);
 
+  // show up to 4 recent finalized entries, most recent last
   const finalEntriesToShow = transcriptEntries.slice(-4);
-  const placeholderText = isListening ? ' ' : (transcriptEntries.length > 0 ? '' : 'Start speaking to see your transcript here...');
+  const placeholderText = isListening ? 'Listening...' : (transcriptEntries.length > 0 ? '' : 'Start speaking to see your transcript here');
+
   const liveTextClassName = {
       visible: 'opacity-100',
       holding: 'opacity-100',
       fading: 'opacity-0 transition-opacity duration-500 ease-out'
   }[liveTextState];
 
-  const liveTextToRender = censorProfanity(liveText, censorLanguage);
+  const liveTextToRender = censorProfanity(liveText, censorLanguage) || '';
 
   return (
     <div ref={containerRef} className="fixed inset-0 bg-[#05080a] text-white flex flex-col items-center justify-center overflow-hidden animate-[immersive-fade-in_0.5s_ease-out] [animation:breathing-bg_20s_ease-in-out_infinite]">
@@ -701,41 +688,32 @@ const ImmersiveMode: React.FC<ImmersiveModeProps> = ({ isListening, transcriptEn
         </div>
       )}
 
-      {!isTrueMobile && (
-        <div className="absolute inset-0 flex flex-col items-center justify-end pointer-events-none z-50 pb-24 sm:pb-48">
-          <div className="w-full max-w-4xl text-center space-y-2 p-2 sm:p-4">
-            <div className="h-48 text-lg sm:text-2xl text-slate-400 relative overflow-hidden">
-              {finalEntriesToShow.map((entry, index) => {
-                  const isTheLatestEntry = entry.id === lastAddedEntryId;
-                  const shouldHideTemporarily = isTheLatestEntry && liveTextState === 'holding';
-                  
-                  let animationClass = '';
-                  if (isTheLatestEntry) {
-                      animationClass = shouldHideTemporarily ? 'opacity-0' : 'animate-[slide-fade-in_0.6s_ease-out]';
-                  }
+            {!isTrueMobile && (
+                <div className="absolute inset-0 flex flex-col items-center justify-end pointer-events-none z-50 pb-24 sm:pb-48">
+                    <div className="w-full max-w-4xl text-center p-2 sm:p-4">
+                        {/* Recent finalized entries: stacked list (no absolute positioning) to avoid overlap */}
+                        <ul aria-live="polite" aria-atomic="true" className="flex flex-col-reverse gap-2 text-lg sm:text-2xl text-slate-400 max-h-48 overflow-y-auto pr-2">
+                            {finalEntriesToShow.map((entry) => (
+                                <li key={entry.id} className={`transition-transform duration-300 ease-out transform-gpu motion-reduce:transform-none`}>
+                                    <span className="block break-words text-slate-300 bg-black/20 backdrop-blur-sm rounded-md px-3 py-2 border border-slate-700/40 shadow-sm pointer-events-auto">
+                                        {censorProfanity(entry.text, censorLanguage)}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
 
-                  const bottomRem = (finalEntriesToShow.length - 1 - index) * itemTotalHeightRem;
-
-                  return (
-                      <p
-                          key={entry.id}
-                          className={`transition-all duration-500 ease-out absolute left-0 right-0 ${animationClass}`}
-                          style={{ bottom: `${bottomRem}rem` }}
-                      >
-                          {censorProfanity(entry.text, censorLanguage)}
-                      </p>
-                  );
-              })}
-            </div>
-            <div className="min-h-[4rem] text-2xl sm:text-4xl font-semibold text-slate-100 p-2 sm:p-4 bg-black/20 backdrop-blur-sm rounded-xl border border-slate-700/50 shadow-lg">
-              <p className={liveTextClassName}>
-                {liveTextToRender || placeholderText}
-                {isListening && liveTextState === 'visible' && <span className="inline-block w-1 h-8 sm:h-10 bg-[var(--color-accent)] ml-1 animate-[cursor-blink_1s_step-end_infinite]"></span>}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+                        <div className="mt-3 min-h-[4rem] text-2xl sm:text-4xl font-semibold text-slate-100 p-2 sm:p-4 bg-black/20 backdrop-blur-sm rounded-xl border border-slate-700/50 shadow-lg pointer-events-auto" role="status" aria-live="polite">
+                            <p className={liveTextClassName}>
+                                {liveTextToRender || placeholderText}
+                                {isListening && liveTextState === 'visible' && (
+                                    <span className="inline-block w-1 h-8 sm:h-10 bg-[var(--color-accent)] ml-1 animate-[cursor-blink_1s_step-end_infinite]" aria-hidden="true"></span>
+                                )}
+                            </p>
+                            <div className="sr-only">{isListening ? 'Microphone active' : 'Microphone inactive'}</div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
       <div className="absolute bottom-0 left-0 right-0 h-48 z-20 pointer-events-none">
         <EnhancedVisualizer analyser={analyser} themeColors={themeColors} type={visualizerType} />

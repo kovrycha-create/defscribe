@@ -184,16 +184,16 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
 
   return (
     <>
-      <div className="flex flex-col h-full cosmo-panel md:rounded-2xl p-2 md:p-4 gap-4">
-        <header className="flex flex-col sm:flex-row items-center gap-2 pb-2 border-b border-[rgba(var(--color-primary-rgb),0.2)] z-10">
-            <div className="relative w-full sm:w-72 flex-shrink sm:min-w-[12rem]">
+    <div className="flex flex-col h-full cosmo-panel md:rounded-2xl p-2 md:p-4 gap-4">
+    <header className="flex flex-col sm:flex-row items-center gap-2 pb-2 border-b border-[rgba(var(--color-primary-rgb),0.2)] z-10">
+      <div className="relative w-full sm:w-72 flex-shrink sm:min-w-[12rem]">
                 <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
                 <input
                 type="text"
                 placeholder="Search transcript..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full cosmo-input rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none"
+        className="w-full cosmo-input rounded-lg py-3 pl-10 pr-4 text-sm focus:outline-none touch-target"
                 />
             </div>
             
@@ -252,7 +252,7 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
             </div>
         </header>
 
-        <div className="z-10 relative transition-all duration-300 ease-in-out" ref={visualizerContainerRef} style={{ height: `${visualizerHeight}px` }}>
+  <div className="z-10 relative transition-all duration-300 ease-in-out" ref={visualizerContainerRef} style={{ height: `${visualizerHeight}px`, maxHeight: '40vh' }}>
             {proactiveMessage && (
               <ProactiveAssistantMessage
                 message={proactiveMessage}
@@ -276,7 +276,7 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
             />
         </Tooltip>
 
-        <div className={`flex-1 min-h-0 bg-slate-900/50 rounded-xl border border-[rgba(var(--color-primary-rgb),0.2)] shadow-inner z-10 transition-opacity ${isTranscriptEmptyOnMobile ? 'opacity-40' : 'opacity-100'}`}>
+        <div className={`flex-1 min-h-0 bg-slate-900/50 rounded-xl border border-[rgba(var(--color-primary-rgb),0.2)] shadow-inner z-10 transition-opacity ${isTranscriptEmptyOnMobile ? 'opacity-40' : 'opacity-100'}`} style={{ overflow: 'hidden' }}>
           <TranscriptDisplay
             entries={transcriptEntries}
             isListening={isListening}

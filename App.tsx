@@ -5,6 +5,7 @@ import ControlPanel from './components/panels/ControlPanel';
 import MainContentPanel from './components/panels/MainContentPanel';
 import AnalyticsPanel from './components/panels/AnalyticsPanel';
 import SpeakerAnalyticsPanel from './components/panels/SpeakerAnalyticsPanel';
+import NotesPanel from './components/panels/NotesPanel';
 import BottomNav from './components/BottomNav';
 import ImmersiveMode from './components/ImmersiveMode';
 import WelcomeModal from './components/WelcomeModal';
@@ -355,7 +356,7 @@ const App: React.FC = () => {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [activeMobileTab, setActiveMobileTab] = useState<'controls' | 'transcript' | 'analytics'>('transcript');
   const [highlightedTopic, setHighlightedTopic] = useState<string | null>(null);
-  const [rightPanelTab, setRightPanelTab] = useState<'analytics' | 'speakers'>('analytics');
+  const [rightPanelTab, setRightPanelTab] = useState<'analytics' | 'speakers' | 'notes'>('analytics');
   
   // --- Modals & Popups ---
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem('defscribe-hasWelcomed'));
@@ -688,8 +689,24 @@ const App: React.FC = () => {
               <div className={`flex-1 min-h-0 ${activeMobileTab === 'analytics' ? '' : 'hidden'}`} data-tour-id="analytics-panel">
                 <div className="bg-transparent">
                   <div className="flex border-b border-slate-700">
-                    <button onClick={() => setRightPanelTab('analytics')} className={`px-4 py-2 text-sm ${rightPanelTab === 'analytics' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>Analytics</button>
-                    <button onClick={() => setRightPanelTab('speakers')} className={`px-4 py-2 text-sm ${rightPanelTab === 'speakers' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>Speakers</button>
+                    <button 
+                      onClick={() => setRightPanelTab('analytics')} 
+                      className={`px-4 py-2 text-sm ${rightPanelTab === 'analytics' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}
+                    >
+                      Analytics
+                    </button>
+                    <button 
+                      onClick={() => setRightPanelTab('speakers')} 
+                      className={`px-4 py-2 text-sm ${rightPanelTab === 'speakers' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}
+                    >
+                      Speakers
+                    </button>
+                    <button 
+                      onClick={() => setRightPanelTab('notes')} 
+                      className={`px-4 py-2 text-sm ${rightPanelTab === 'notes' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}
+                    >
+                      Notes
+                    </button>
                   </div>
                   {rightPanelTab === 'analytics' ? (
                     <AnalyticsPanel 
@@ -736,7 +753,6 @@ const App: React.FC = () => {
                       speakerProfiles={speakerProfiles}
                       speakerStats={speakerStats || {}}
                       isListening={isListening}
-                      recordingDuration={recordingDuration}
                     />
                   )}
                 </div>
@@ -838,13 +854,30 @@ const App: React.FC = () => {
                   isPanelCollapsed={settings.panelLayout.isRightPanelCollapsed}
               />
               {settings.panelLayout.isRightPanelCollapsed ? (
-                <CollapsedPanelTab title="Analytics" icon="fa-chart-pie" onClick={() => handlePanelCollapse('isRightPanelCollapsed')} />
+                // Render a single generalized collapsed tab for the right panel that restores the whole panel
+                <CollapsedPanelTab title="Panels" icon="fa-ellipsis-v" onClick={() => handlePanelCollapse('isRightPanelCollapsed')} />
               ) : (
                 <div style={{ width: `${settings.panelLayout.rightPanelWidth}px` }} className="flex-shrink-0 h-full" data-tour-id="analytics-panel">
                   <div className="h-full flex flex-col">
                     <div className="flex border-b border-slate-700">
-                      <button onClick={() => setRightPanelTab('analytics')} className={`px-4 py-2 text-sm ${rightPanelTab === 'analytics' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>Analytics</button>
-                      <button onClick={() => setRightPanelTab('speakers')} className={`px-4 py-2 text-sm ${rightPanelTab === 'speakers' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>Speakers</button>
+                      <button 
+                        onClick={() => setRightPanelTab('analytics')} 
+                        className={`px-4 py-2 text-sm ${rightPanelTab === 'analytics' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}
+                      >
+                        Analytics
+                      </button>
+                      <button 
+                        onClick={() => setRightPanelTab('speakers')} 
+                        className={`px-4 py-2 text-sm ${rightPanelTab === 'speakers' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}
+                      >
+                        Speakers
+                      </button>
+                      <button 
+                        onClick={() => setRightPanelTab('notes')} 
+                        className={`px-4 py-2 text-sm ${rightPanelTab === 'notes' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}
+                      >
+                        Notes
+                      </button>
                     </div>
                     {rightPanelTab === 'analytics' ? (
                       <AnalyticsPanel
@@ -885,13 +918,17 @@ const App: React.FC = () => {
                       auraCustomColors={settings.auraCustomColors}
                       setAuraCustomColors={settings.setAuraCustomColors}
                       />
-                    ) : (
+                    ) : rightPanelTab === 'speakers' ? (
                       <SpeakerAnalyticsPanel
                         segments={segments}
                         speakerProfiles={speakerProfiles}
                         speakerStats={speakerStats || {}}
                         isListening={isListening}
-                        recordingDuration={recordingDuration}
+                      />
+                    ) : (
+                      <NotesPanel
+                        transcriptEntries={transcriptEntries}
+                        addToast={addToast}
                       />
                     )}
                   </div>

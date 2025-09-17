@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback, memo, forwardRef } from 'react';
 import { type SummaryStyle, type ActionItem, type Snippet, type SpeakerProfile, type SpeakerId, type SpeechAnalytics, type TranscriptEntry, type StatCardKey, type GeneratedTitle, type TopicSegment, type CosmicReading, type AuraData, type LiveAudioFeatures, type DiarizationSegment, Emotion } from '../../types';
 import TalkTimeVisualizer from '../TalkTimeVisualizer';
 import AnalyticsItemLoader from '../AnalyticsItemLoader';
@@ -99,113 +99,178 @@ const hexToRgb = (hex: string): [number, number, number] => {
 
 type Particle = { x: number; y: number; vx: number; vy: number; radius: number; alpha: number; color: string; };
 
-const AuraVisualization: React.FC<{ auraData: AuraData | null; liveAudioFeatures: LiveAudioFeatures; settings: AuraSettings }> = ({ auraData, liveAudioFeatures, settings }) => {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
+const AuraVisualization: React.FC<{ auraData: AuraData | null; liveAudioFeatures: LiveAudioFeatures; settings: AuraSettings }> = memo(({ auraData, liveAudioFeatures, settings }) => {
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const particlesRef = useRef<Particle[]>([]);
     const [visibleKeywords, setVisibleKeywords] = useState<string[]>([]);
+    const visibleKeywordsRef = useRef<Set<string>>(new Set());
+    const keywordPositionsRef = useRef<Record<string, { left: number; top: number }>>({});
+    const keywordTimersRef = useRef<number[]>([]);
+    const intervalRef = useRef<number | null>(null);
     const [showControls, setShowControls] = useState(false);
-    
-    const audioFeaturesRef = useRef(liveAudioFeatures);
-    useEffect(() => {
-        audioFeaturesRef.current = liveAudioFeatures;
-    });
 
-    // Stable keyword appearance: deterministic offsets (so they don't jump each render),
-    // slightly longer display, and fewer simultaneous keywords to reduce clutter.
+    const audioFeaturesRef = useRef<LiveAudioFeatures>(liveAudioFeatures);
+    useEffect(() => { audioFeaturesRef.current = liveAudioFeatures; }, [liveAudioFeatures]);
+
+    const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     const stableOffset = (s: string, range = 12) => {
         let h = 0;
-        for (let i = 0; i < s.length; i++) {
-            h = (h * 31 + s.charCodeAt(i)) >>> 0;
-        }
+        for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
         const x = (h % (range * 2)) - range;
         const y = ((h >> 8) % (range * 2)) - range;
         return { x, y };
     };
 
+    // Manage visible keywords deterministically and without stale closures
     useEffect(() => {
-        const interval = setInterval(() => {
-            if (auraData?.keywords && auraData.keywords.length > 0) {
-                const availableKeywords = auraData.keywords.filter(k => !visibleKeywords.includes(k));
-                if (availableKeywords.length > 0) {
-                    const newKeyword = availableKeywords[Math.floor(Math.random() * availableKeywords.length)];
-                    setVisibleKeywords(prev => {
-                        const next = [...prev, newKeyword].slice(-2); // Show max 2 keywords
-                        setTimeout(() => {
-                            setVisibleKeywords(current => current.filter(k => k !== newKeyword));
-                        }, 6000); // 6s display duration for stability
-                        return next;
-                    });
-                }
+        // Clear any existing timers/intervals
+        if (intervalRef.current) {
+            window.clearInterval(intervalRef.current);
+            intervalRef.current = null;
+        }
+        keywordTimersRef.current.forEach(t => window.clearTimeout(t));
+        keywordTimersRef.current = [];
+        visibleKeywordsRef.current.clear();
+        setVisibleKeywords([]);
+
+        if (!auraData?.keywords || auraData.keywords.length === 0) return;
+
+        const pickAndShow = () => {
+            const pool = auraData.keywords.filter(k => !visibleKeywordsRef.current.has(k));
+            if (pool.length === 0) return;
+            const k = pool[Math.floor(Math.random() * pool.length)];
+            visibleKeywordsRef.current.add(k);
+            // assign a stable position if not already present
+            if (!keywordPositionsRef.current[k] && canvasRef.current) {
+                const rect = canvasRef.current.getBoundingClientRect();
+                const offsets = stableOffset(k, Math.max(8, Math.round(Math.min(rect.width, rect.height) / 40)));
+                const left = Math.max(4, Math.min(96, 50 + (offsets.x / rect.width) * 100));
+                const top = Math.max(6, Math.min(86, 50 + (offsets.y / rect.height) * 100));
+                keywordPositionsRef.current[k] = { left, top };
             }
-        }, 3500);
-        return () => clearInterval(interval);
-    }, [auraData?.keywords, visibleKeywords]);
-    
+            setVisibleKeywords(Array.from(visibleKeywordsRef.current).slice(-2));
+
+            const t = window.setTimeout(() => {
+                visibleKeywordsRef.current.delete(k);
+                setVisibleKeywords(Array.from(visibleKeywordsRef.current));
+            }, 6000);
+            keywordTimersRef.current.push(t as unknown as number);
+        };
+
+        // Run once immediately, then start interval
+        pickAndShow();
+        intervalRef.current = window.setInterval(pickAndShow, 3500) as unknown as number;
+
+        return () => {
+            if (intervalRef.current) {
+                window.clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+            keywordTimersRef.current.forEach(t => window.clearTimeout(t));
+            keywordTimersRef.current = [];
+            visibleKeywordsRef.current.clear();
+            setVisibleKeywords([]);
+        };
+    }, [auraData?.keywords]);
+
+    // Canvas drawing
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
-
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        
+
         const dpr = window.devicePixelRatio || 1;
-        let animationFrameId: number;
-        
+        let rafId = 0;
+
         const resize = () => {
-            if (canvas.parentElement) {
-                canvas.width = canvas.parentElement.offsetWidth * dpr;
-                canvas.height = canvas.parentElement.offsetHeight * dpr;
-                // Use setTransform to avoid accumulating scales on repeated resize
-                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            }
+            const parent = canvas.parentElement;
+            if (!parent) return;
+            const w = parent.clientWidth;
+            const h = parent.clientHeight;
+            canvas.width = Math.max(1, Math.floor(w * dpr));
+            canvas.height = Math.max(1, Math.floor(h * dpr));
+            canvas.style.width = `${w}px`;
+            canvas.style.height = `${h}px`;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         };
         resize();
         window.addEventListener('resize', resize);
-        
-        const draw = () => {
-            animationFrameId = requestAnimationFrame(draw);
-            const { offsetWidth: W, offsetHeight: H } = canvas;
+
+        const getPaletteColor = (emotion: string) => {
+            if (settings.auraPalette === 'custom') return hexToRgb(settings.auraCustomColors.core);
+            const palette = AURA_PALETTES[settings.auraPalette] || AURA_PALETTES.emotion;
+            return (palette as any)[emotion] || (palette as any).normal || [200, 200, 200];
+        };
+
+        const drawStatic = () => {
+            const W = canvas.width / dpr;
+            const H = canvas.height / dpr;
             ctx.clearRect(0, 0, W, H);
-            
             const centerX = W / 2;
             const centerY = H / 2;
-            
             const emotion = auraData?.dominantEmotion || 'normal';
-            let color: [number, number, number];
-            if (settings.auraPalette === 'custom') {
-                color = hexToRgb(settings.auraCustomColors.core);
-            } else {
-                const palette = AURA_PALETTES[settings.auraPalette] || AURA_PALETTES.emotion;
-                color = palette[emotion] || palette.normal;
-            }
-            
-            // --- Particles ---
-            const volume = audioFeaturesRef.current.volume || 0;
-            // Reduce spawn rate and cap for a calmer experience
-            if (volume > 0.5 && Math.random() > (0.95 / settings.auraParticleDensity) && particlesRef.current.length < 120) {
-                const sentiment = auraData?.sentiment || 0;
-                let particleColor = settings.auraCustomColors.neutral;
-                if (sentiment > 0.3) particleColor = settings.auraCustomColors.positive;
-                else if (sentiment < -0.3) particleColor = settings.auraCustomColors.negative;
+            const color = getPaletteColor(emotion);
+            const baseRadius = Math.min(W, H) * 0.15;
+            const g = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, baseRadius);
+            g.addColorStop(0, `rgba(${color.join(',')}, 0.9)`);
+            g.addColorStop(0.9, `rgba(${color.join(',')}, 0.25)`);
+            g.addColorStop(1, `rgba(${color.join(',')}, 0)`);
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, baseRadius, 0, Math.PI * 2);
+            ctx.fill();
+        };
 
+        const step = () => {
+            if (prefersReducedMotion) {
+                drawStatic();
+                return;
+            }
+
+            rafId = requestAnimationFrame(step);
+            const W = canvas.width / dpr;
+            const H = canvas.height / dpr;
+            ctx.clearRect(0, 0, W, H);
+            const centerX = W / 2;
+            const centerY = H / 2;
+
+            const emotion = auraData?.dominantEmotion || 'normal';
+            const color = getPaletteColor(emotion);
+
+            const volume = Math.min(1, Math.max(0, audioFeaturesRef.current?.volume || 0));
+
+            // spawn probability tuned to density and volume
+            const spawnChance = Math.min(0.25, 0.02 * settings.auraParticleDensity + Math.max(0, (volume - 0.2)) * 0.2);
+            if (Math.random() < spawnChance && particlesRef.current.length < 120) {
+                const sentiment = auraData?.sentiment ?? 0;
+                let particleColor = `rgba(${color.join(',')}, 0.95)`;
+                // favor positive/negative tint when sentiment is strong
+                if (settings.auraPalette === 'custom') {
+                    particleColor = sentiment > 0.3 ? settings.auraCustomColors.positive : sentiment < -0.3 ? settings.auraCustomColors.negative : settings.auraCustomColors.neutral;
+                }
                 particlesRef.current.push({
-                    x: centerX, y: centerY,
-                    vx: (Math.random() - 0.5) * 2, vy: (Math.random() - 0.5) * 2,
-                    radius: Math.random() * 2 + 1, alpha: 1, color: particleColor,
+                    x: centerX + (Math.random() - 0.5) * 12,
+                    y: centerY + (Math.random() - 0.5) * 12,
+                    vx: (Math.random() - 0.5) * (1 + volume * 2),
+                    vy: (Math.random() - 0.5) * (1 + volume * 2),
+                    radius: Math.random() * 2.5 + 0.75,
+                    alpha: 1,
+                    color: particleColor,
                 });
             }
 
-            // Iterate backwards to safely remove faded particles
+            // particles
             for (let i = particlesRef.current.length - 1; i >= 0; i--) {
                 const p = particlesRef.current[i];
                 p.x += p.vx;
                 p.y += p.vy;
-                p.alpha -= 0.006; // slower fade for smoother visuals
+                p.alpha -= 0.01; // fade
                 if (p.alpha <= 0) {
                     particlesRef.current.splice(i, 1);
                     continue;
                 }
-
                 ctx.globalAlpha = p.alpha;
                 ctx.fillStyle = p.color;
                 ctx.beginPath();
@@ -214,129 +279,145 @@ const AuraVisualization: React.FC<{ auraData: AuraData | null; liveAudioFeatures
             }
             ctx.globalAlpha = 1;
 
-            // --- Rings ---
+            // rings
             for (let i = 3; i > 0; i--) {
                 ctx.beginPath();
-                ctx.arc(centerX, centerY, (W * 0.15) + (i * 20) + (volume * 10 * settings.auraPulsationSpeed), 0, Math.PI * 2);
-                ctx.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${0.1 * (4 - i)})`;
+                ctx.arc(centerX, centerY, (Math.min(W, H) * 0.15) + (i * 18) + (volume * 8 * settings.auraPulsationSpeed), 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${0.08 * (4 - i)})`;
                 ctx.lineWidth = 1;
                 ctx.stroke();
             }
 
-            // --- Orb ---
-            const baseRadius = W * 0.15;
-            const radius = baseRadius * (1 + volume * 0.1 * settings.auraPulsationSpeed);
-            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-            gradient.addColorStop(0, `rgba(${color.join(',')}, 0.9)`);
-            gradient.addColorStop(0.8, `rgba(${color.join(',')}, 0.5)`);
-            gradient.addColorStop(1, `rgba(${color.join(',')}, 0)`);
-            
-            ctx.fillStyle = gradient;
+            // orb
+            const baseRadius = Math.min(W, H) * 0.15;
+            const radius = baseRadius * (1 + volume * 0.12 * settings.auraPulsationSpeed);
+            const g = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+            g.addColorStop(0, `rgba(${color.join(',')}, 0.95)`);
+            g.addColorStop(0.8, `rgba(${color.join(',')}, 0.45)`);
+            g.addColorStop(1, `rgba(${color.join(',')}, 0)`);
+            ctx.fillStyle = g;
             ctx.beginPath();
             ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
             ctx.fill();
         };
 
-        draw();
+        step();
 
         return () => {
-            cancelAnimationFrame(animationFrameId);
+            if (!prefersReducedMotion) cancelAnimationFrame(rafId);
             window.removeEventListener('resize', resize);
+            particlesRef.current = [];
+        };
+    }, [auraData, settings.auraPulsationSpeed, settings.auraParticleDensity, settings.auraPalette, settings.auraCustomColors, prefersReducedMotion]);
+
+    // Announce key readouts for screen readers when aura changes
+    const [srAnnouncement, setSrAnnouncement] = useState('');
+    useEffect(() => {
+        if (!auraData) {
+            setSrAnnouncement('Aura analysis inactive');
+            return;
         }
-    }, [auraData, settings]);
-    
+        const text = `Dominant emotion ${auraData.dominantEmotion}. Sentiment ${(auraData.sentiment * 100).toFixed(0)} percent.`;
+        setSrAnnouncement(text);
+    }, [auraData?.dominantEmotion, auraData?.sentiment]);
+
+    // keyboard/focus accessibility for controls
+    const containerRef = useRef<HTMLDivElement | null>(null);
+
     if (!auraData) {
         return (
             <div className="flex flex-col items-center justify-center text-slate-400 h-full p-6 text-center animate-[fadeIn_0.5s_ease-out]">
-                <i className="fas fa-atom text-4xl mb-4 text-[var(--color-secondary)]"></i>
+                <i className="fas fa-atom text-4xl mb-4 text-[var(--color-secondary)]" aria-hidden="true"></i>
                 <h3 className="font-semibold text-lg text-slate-200">Aura Analysis</h3>
-                <p className="text-sm">Start speaking to see a real-time visualization of your communication's energy.</p>
+                <p className="text-sm">Speak a little to see a live visualization of your conversation's tone and energy.</p>
             </div>
         );
     }
-    
+
     return (
-        <div 
+        <div
+            ref={containerRef}
             className="relative w-full h-full flex items-center justify-center"
-            onMouseEnter={() => setShowControls(true)}
-            onMouseLeave={() => setShowControls(false)}
+            onPointerEnter={() => setShowControls(true)}
+            onPointerLeave={() => setShowControls(false)}
+            onFocus={() => setShowControls(true)}
+            onBlur={() => setShowControls(false)}
+            tabIndex={-1}
         >
-            <div className="w-full h-full flex items-stretch gap-4">
-                <div className="flex-1 relative">
-                    <canvas ref={canvasRef} className="w-full h-full" />
+            <div className="w-full h-full">
+                <div className="w-full h-full relative">
+                    <canvas
+                        ref={canvasRef}
+                        className="w-full h-full"
+                        role="img"
+                        aria-label={`Aura visualization showing dominant emotion ${auraData.dominantEmotion}`}
+                        aria-describedby="aura-readout-sr"
+                    />
                 </div>
-                {/* Info panel */}
-                <aside className="w-64 p-3 rounded-lg bg-slate-900/60 border border-slate-700/50 flex-shrink-0">
-                    <h4 className="text-sm font-semibold text-slate-200 mb-2">Aura Readout</h4>
-                    <div className="text-sm text-slate-300 space-y-2">
-                        <div>
-                            <div className="text-xs text-slate-400">Dominant Emotion</div>
-                            <div className="font-bold text-white">{auraData.dominantEmotion}</div>
-                        </div>
-                        <div>
-                            <div className="text-xs text-slate-400">Sentiment</div>
-                            <div className="font-bold text-white">{(auraData.sentiment * 100).toFixed(0)}%</div>
-                        </div>
-                        <div>
-                            <div className="text-xs text-slate-400">Keywords</div>
-                            <div className="flex flex-wrap gap-1 mt-1">
-                                {auraData.keywords.map(k => (
-                                    <span key={k} className="bg-slate-800/40 px-2 py-1 rounded text-xs text-slate-200">{k}</span>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="pt-2">
-                            <div className="text-xs text-slate-400">Tips</div>
-                            <div className="text-xs text-slate-300">Speak naturally; aura updates every few seconds.</div>
-                        </div>
-                    </div>
-                </aside>
             </div>
-            {visibleKeywords.map((keyword, i) => {
-                const offsets = stableOffset(keyword, 16);
+
+            {/* Render visible keywords at deterministic positions */}
+            {visibleKeywords.map((keyword) => {
+                const pos = keywordPositionsRef.current[keyword] || { left: 50, top: 20 };
                 const style: React.CSSProperties = {
                     position: 'absolute',
-                    top: `${18 + (i * 16)}%`,
-                    left: `${i % 2 === 0 ? 8 : 62}%`,
-                    animation: `aura-keyword-float 6s ease-in-out forwards`,
-                    // Use small deterministic translations to reduce jitter
-                    transform: `translate(${offsets.x}px, ${offsets.y}px)`,
-                } as React.CSSProperties;
+                    top: `${pos.top}%`,
+                    left: `${pos.left}%`,
+                    transform: 'translate(-50%, -50%)',
+                    animation: 'aura-keyword-float 6s ease-in-out both',
+                };
                 return (
                     <span key={keyword} style={style} className="text-lg font-bold text-slate-300 pointer-events-none select-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]">
                         {keyword}
                     </span>
                 );
             })}
+
+            {/* Controls */}
             <div className={`absolute bottom-2 left-1/2 -translate-x-1/2 z-20 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                <div className="bg-slate-900/80 backdrop-blur-md p-2 rounded-lg border border-slate-700/50 shadow-xl flex flex-col gap-2 w-72">
+                <div className="bg-slate-900/80 backdrop-blur-md p-2 rounded-lg border border-slate-700/50 shadow-xl flex flex-col gap-2 w-72" role="group" aria-label="Aura controls">
                     <div className="flex items-center gap-2">
-                        <Tooltip content="Color Palette"><i className="fas fa-palette text-slate-300 w-5 text-center"></i></Tooltip>
-                        <div className="flex-1"><CustomSelect options={['Emotion', 'Calm', 'Vibrant', 'Custom']} value={settings.auraPalette.charAt(0).toUpperCase() + settings.auraPalette.slice(1)} onChange={(v) => settings.setAuraPalette(v.toLowerCase())} label="Aura Color Palette" /></div>
+                        <Tooltip content="Color palette">
+                            <i className="fas fa-palette text-slate-300 w-5 text-center" aria-hidden="true"></i>
+                        </Tooltip>
+                        <div className="flex-1">
+                            <label className="sr-only">Aura color palette</label>
+                            <CustomSelect options={['Emotion', 'Calm', 'Vibrant', 'Custom']} value={settings.auraPalette.charAt(0).toUpperCase() + settings.auraPalette.slice(1)} onChange={(v) => settings.setAuraPalette(v.toLowerCase())} label="Aura Color Palette" />
+                        </div>
                     </div>
                     {settings.auraPalette === 'custom' && (
                         <div className="flex justify-around items-center gap-1 text-center animate-[fadeIn_0.2s_ease-out]">
                             {(['core', 'positive', 'negative', 'neutral'] as const).map(key => (
                                 <div key={key} className="flex flex-col items-center gap-1">
-                                    <input type="color" value={settings.auraCustomColors[key]} onChange={(e) => settings.setAuraCustomColors({...settings.auraCustomColors, [key]: e.target.value})} className="w-8 h-8 p-0 border-none rounded-md bg-transparent cursor-pointer" aria-label={`${key} color`} />
-                                    <label className="text-xs text-slate-400">{key.charAt(0).toUpperCase() + key.slice(1)}</label>
+                                    <label className="sr-only">{key} color</label>
+                                    <input type="color" value={(settings.auraCustomColors as any)[key]} onChange={(e) => settings.setAuraCustomColors({...settings.auraCustomColors, [key]: e.target.value})} className="w-8 h-8 p-0 border-none rounded-md bg-transparent cursor-pointer" aria-label={`${key} color`} />
+                                    <span className="text-xs text-slate-400">{key.charAt(0).toUpperCase() + key.slice(1)}</span>
                                 </div>
                             ))}
                         </div>
                     )}
                     <div className="flex items-center gap-2">
-                        <Tooltip content="Pulsation Speed"><i className="fas fa-heartbeat text-slate-300 w-5 text-center"></i></Tooltip>
-                        <input type="range" min="0.2" max="2.5" step="0.1" value={settings.auraPulsationSpeed} onChange={(e) => settings.setAuraPulsationSpeed(parseFloat(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-[var(--color-primary)]"/>
+                        <Tooltip content="Pulsation speed">
+                            <i className="fas fa-heartbeat text-slate-300 w-5 text-center" aria-hidden="true"></i>
+                        </Tooltip>
+                        <label className="sr-only">Pulsation speed</label>
+                        <input aria-label="Pulsation speed" type="range" min="0.2" max="2.5" step="0.1" value={settings.auraPulsationSpeed} onChange={(e) => settings.setAuraPulsationSpeed(parseFloat(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-[var(--color-primary)]"/>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Tooltip content="Particle Density"><i className="fas fa-atom text-slate-300 w-5 text-center"></i></Tooltip>
-                        <input type="range" min="0.2" max="2.5" step="0.1" value={settings.auraParticleDensity} onChange={(e) => settings.setAuraParticleDensity(parseFloat(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-[var(--color-primary)]"/>
+                        <Tooltip content="Particle density">
+                            <i className="fas fa-atom text-slate-300 w-5 text-center" aria-hidden="true"></i>
+                        </Tooltip>
+                        <label className="sr-only">Particle density</label>
+                        <input aria-label="Particle density" type="range" min="0.2" max="2.5" step="0.1" value={settings.auraParticleDensity} onChange={(e) => settings.setAuraParticleDensity(parseFloat(e.target.value))} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-[var(--color-primary)]"/>
                     </div>
                 </div>
             </div>
+
+            {/* screen-reader live region */}
+            <div id="aura-readout-sr" className="sr-only" aria-live="polite" aria-atomic="true">{srAnnouncement}</div>
         </div>
     );
-};
+});
 
 
 type ActiveTab = 'summary' | 'actions' | 'snippets' | 'stats' | 'reading' | 'aura';
@@ -386,7 +467,7 @@ const useTypingEffect = (text: string, speed = 25) => {
     return displayedText;
 };
 
-const CosmicReadingLoader: React.FC = () => (
+const CosmicReadingLoader: React.FC = memo(() => (
     <div className="flex flex-col items-center justify-center text-slate-400 h-full p-6 text-center animate-[fadeIn_0.5s_ease-out]">
         <div className="relative w-24 h-24 mb-4">
             <div className="absolute inset-0 border-2 border-[var(--color-primary)]/30 rounded-full"></div>
@@ -398,7 +479,7 @@ const CosmicReadingLoader: React.FC = () => (
         <p className="font-semibold text-slate-300">Consulting the Cosmic Currents...</p>
         <p className="text-sm">Ymzo is interpreting the strands of fate.</p>
     </div>
-);
+));
 
 // Removed unused fluonNames and trinketNames to eliminate lint warnings
 
@@ -435,7 +516,7 @@ const LoreGlyph: React.FC<{ name: string; type: 'strand' | 'card' | 'modifier'; 
     );
 };
 
-const CosmicReadingPanel: React.FC<{ reading: CosmicReading; onOpenCodex: (tab: string, entryId: string) => void; }> = ({ reading, onOpenCodex }) => {
+const CosmicReadingPanel: React.FC<{ reading: CosmicReading; onOpenCodex: (tab: string, entryId: string) => void; }> = memo(({ reading, onOpenCodex }) => {
     const typedReadingText = useTypingEffect(reading.readingText);
     const cardTitle = cards[reading.cardId as keyof typeof cards]?.title || reading.cardId;
 
@@ -457,23 +538,25 @@ const CosmicReadingPanel: React.FC<{ reading: CosmicReading; onOpenCodex: (tab: 
             </div>
         </div>
     );
-};
+});
 
 const SummaryButton: React.FC<{ style: SummaryStyle; current: SummaryStyle | null; onClick: () => void; children: React.ReactNode; }> = ({ style, current, onClick, children }) => (
-  <button
-    onClick={onClick}
-    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex-1 cosmo-button ${style === current ? 'bg-[var(--color-primary)] text-black border-transparent' : ''}`}
-  >
-    {children}
-  </button>
+    <button
+        role="button"
+        aria-pressed={style === current}
+        onClick={onClick}
+        className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex-1 cosmo-button focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] ${style === current ? 'bg-[var(--color-primary)] text-black border-transparent' : ''}`}
+    >
+        {children}
+    </button>
 );
 
-const StatCard: React.FC<{ icon: string; label: string; value: string | number; unit?: string; }> = ({ icon, label, value, unit }) => (
+const StatCard: React.FC<{ icon: string; label: string; value: string | number; unit?: string; }> = memo(({ icon, label, value, unit }) => (
     <div className="stat-card-full p-3 flex items-center gap-2 rounded-lg">
         <div className="text-slate-500">
-            <i className="fas fa-grip-vertical"></i>
+            <i className="fas fa-grip-vertical" aria-hidden="true"></i>
         </div>
-        <div className="w-10 h-10 bg-slate-900/50 rounded-full flex items-center justify-center text-[var(--color-accent)] text-xl flex-shrink-0 border-2 border-[rgba(var(--color-accent-rgb),0.2)]">
+        <div className="w-10 h-10 bg-slate-900/50 rounded-full flex items-center justify-center text-[var(--color-accent)] text-xl flex-shrink-0 border-2 border-[rgba(var(--color-accent-rgb),0.2)]" aria-hidden="true">
             <i className={`fas ${icon}`}></i>
         </div>
         <div className="flex-1 text-right">
@@ -484,7 +567,7 @@ const StatCard: React.FC<{ icon: string; label: string; value: string | number; 
             </div>
         </div>
     </div>
-);
+));
 
 const TABS_CONFIG: { name: string; icon: string; tab: ActiveTab; }[] = [
     { name: 'Aura', icon: 'fa-atom', tab: 'aura' },
@@ -495,45 +578,69 @@ const TABS_CONFIG: { name: string; icon: string; tab: ActiveTab; }[] = [
     { name: 'Reading', icon: 'fa-book-open', tab: 'reading' },
 ];
 
-const TabButton: React.FC<{
-    name: string;
-    icon: string;
-    tab: ActiveTab;
-    activeTab: ActiveTab;
-    onClick: (tab: ActiveTab) => void;
-    count?: number;
-    isIconOnly?: boolean;
-    iconSizeVariant?: 'normal' | 'compact' | 'xs';
-    pulse?: boolean;
-}> = ({ name, icon, tab, activeTab, onClick, count, isIconOnly, iconSizeVariant = 'normal' }) => {
-  const isActive = activeTab === tab;
-  
-  const baseClasses = 'relative text-center font-semibold py-4 text-sm md:py-2 transition-all duration-300 rounded-t-lg border border-b-0 flex items-center justify-center';
-  const activeClasses = 'bg-[rgba(var(--color-primary-rgb),0.3)] text-white border-[rgba(var(--color-primary-rgb),0.5)]';
-  const inactiveClasses = 'bg-[rgba(var(--color-primary-rgb),0.1)] text-slate-400 border-transparent hover:bg-[rgba(var(--color-primary-rgb),0.2)] hover:border-[rgba(var(--color-primary-rgb),0.4)] hover:border-b-transparent';
-  
-    const layoutClasses = isIconOnly
-        ? (iconSizeVariant === 'xs' ? 'flex-grow-0 flex-shrink-0 basis-10' : iconSizeVariant === 'compact' ? 'flex-grow-0 flex-shrink-0 basis-12' : 'flex-grow-0 flex-shrink-0 basis-16')
-        : 'flex-auto';
+type TabButtonProps = {
+        name: string;
+        icon: string;
+        tab: ActiveTab;
+        activeTab: ActiveTab;
+        onClick: (tab: ActiveTab) => void;
+        count?: number;
+        isIconOnly?: boolean;
+        iconSizeVariant?: 'normal' | 'compact' | 'xs';
+        pulse?: boolean;
+};
+
+const TabButtonInner = forwardRef<HTMLButtonElement, TabButtonProps>(({ name, icon, tab, activeTab, onClick, count, isIconOnly, iconSizeVariant = 'normal' }, ref) => {
+        const isActive = activeTab === tab;
+
+        const baseClasses = 'relative text-center font-semibold py-4 text-sm md:py-2 transition-all duration-300 rounded-t-lg border border-b-0 flex items-center justify-center';
+        const activeClasses = 'bg-[rgba(var(--color-primary-rgb),0.3)] text-white border-[rgba(var(--color-primary-rgb),0.5)]';
+        const inactiveClasses = 'bg-[rgba(var(--color-primary-rgb),0.1)] text-slate-400 border-transparent hover:bg-[rgba(var(--color-primary-rgb),0.2)] hover:border-[rgba(var(--color-primary-rgb),0.4)] hover:border-b-transparent';
+
+        const layoutClasses = isIconOnly
+            ? (iconSizeVariant === 'xs' ? 'flex-grow-0 flex-shrink-0 basis-10' : iconSizeVariant === 'compact' ? 'flex-grow-0 flex-shrink-0 basis-12' : 'flex-grow-0 flex-shrink-0 basis-16')
+            : 'flex-auto';
+
+        const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick(tab);
+            }
+        };
+
+        // Ensure each tab button can be connected to its panel via aria-controls
+        const tabId = `analytics-tab-${tab}`;
+        const panelId = `analytics-panel-${tab}`;
 
         return (
-    <Tooltip content={name}>
-      <button
-        onClick={() => onClick(tab)}
-        className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses} ${layoutClasses}`}
-      >
-        {isIconOnly ? <i className={`fas ${icon} ${iconSizeVariant === 'xs' ? 'text-sm' : iconSizeVariant === 'compact' ? 'text-base' : 'text-lg'}`}></i> : name}
-        {/* pulse handled by parent via absolute badge when needed */}
-        {count != null && count > 0 && (
-          <span className={`absolute top-1 text-xs bg-[var(--color-secondary)] text-white rounded-full h-5 min-w-[1.25rem] px-1 flex items-center justify-center font-bold ${isIconOnly ? 'right-1' : 'right-2'}`}>
-            {count > 99 ? "99+" : count}
-          </span>
-        )}
-      </button>
-    </Tooltip>
-  );
-};
-TabButton.displayName = 'TabButton';
+            <Tooltip content={name}>
+                <button
+                    id={tabId}
+                    ref={ref}
+                    role="tab"
+                    aria-selected={isActive}
+                    aria-controls={panelId}
+                    data-tab={tab}
+                    tabIndex={isActive ? 0 : -1}
+                    onKeyDown={handleKeyDown}
+                    onClick={() => onClick(tab)}
+                    className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses} ${layoutClasses} focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-primary)]`}
+                >
+                    {isIconOnly ? <i className={`fas ${icon} ${iconSizeVariant === 'xs' ? 'text-sm' : iconSizeVariant === 'compact' ? 'text-base' : 'text-lg'}`} aria-hidden="true"></i> : name}
+                    {count != null && count > 0 && (
+                        <span className={`absolute top-1 text-xs bg-[var(--color-secondary)] text-white rounded-full h-5 min-w-[1.25rem] px-1 flex items-center justify-center font-bold ${isIconOnly ? 'right-1' : 'right-2'}`} aria-hidden="true">
+                            {count > 99 ? "99+" : count}
+                        </span>
+                    )}
+                </button>
+            </Tooltip>
+        );
+});
+    
+
+// Memoize the forwarded tab button for performance
+const MemoTabButton = memo(TabButtonInner);
+MemoTabButton.displayName = 'TabButton';
 
 
 const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({ 
@@ -545,9 +652,12 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
   auraData, liveAudioFeatures, ...auraSettings
 }) => {
   const [localActiveTab, setLocalActiveTab] = useState<ActiveTab>('stats');
-  const [copiedTitleId, setCopiedTitleId] = useState<string | null>(null);
+    const [copiedTitleId, setCopiedTitleId] = useState<string | null>(null);
   const navRef = useRef<HTMLElement>(null);
   const [navWidth, setNavWidth] = useState(0);
+    const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+            const [copyAnnouncement, setCopyAnnouncement] = useState<string>('');
+            const copyTimeoutsRef = useRef<number[]>([]);
 
   useEffect(() => {
     const navElement = navRef.current;
@@ -575,13 +685,35 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
     }, [auraData]);
 
   const handleTabClick = (tab: ActiveTab) => {
-    setLocalActiveTab(tab);
+        setLocalActiveTab(tab);
+        // Move focus to the clicked tab for keyboard users
+        const btn = tabButtonRefs.current[tab];
+        if (btn) btn.focus();
   };
 
-  const hasEnoughContentForAnalytics = useMemo(() => {
-    const totalWords = transcriptEntries.map(e => e.text).join(' ').split(/\s+/).filter(Boolean).length;
-    return totalWords > 20;
-  }, [transcriptEntries]);
+    // Arrow-key navigation between tabs
+    const handleNavKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
+        const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+        if (!keys.includes(e.key)) return;
+        e.preventDefault();
+        const currentIndex = TABS_CONFIG.findIndex(t => t.tab === (localActiveTab));
+        if (currentIndex === -1) return;
+        let nextIndex = currentIndex;
+        if (e.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + TABS_CONFIG.length) % TABS_CONFIG.length;
+        if (e.key === 'ArrowRight') nextIndex = (currentIndex + 1) % TABS_CONFIG.length;
+        if (e.key === 'Home') nextIndex = 0;
+        if (e.key === 'End') nextIndex = TABS_CONFIG.length - 1;
+        const nextTab = TABS_CONFIG[nextIndex].tab;
+        setLocalActiveTab(nextTab);
+        // Focus the new tab button
+        setTimeout(() => tabButtonRefs.current[nextTab]?.focus(), 0);
+    };
+
+    const hasEnoughContentForAnalytics = useMemo(() => {
+        const joined = transcriptEntries.map(e => e.text || '').join(' ');
+        const totalWords = joined.trim() ? joined.split(/\s+/).filter(Boolean).length : 0;
+        return totalWords > 20;
+    }, [transcriptEntries]);
 
   const hasAnyAnalytics = speechAnalytics.wpm !== undefined || actionItems.length > 0 || snippets.length > 0;
   
@@ -622,23 +754,59 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
         setDragOverItem(null);
     };
     
-    const handleCopyTitle = (title: GeneratedTitle) => {
-        navigator.clipboard.writeText(title.text);
-        setCopiedTitleId(title.id);
-        setTimeout(() => setCopiedTitleId(null), 2000);
-    }
+    const handleCopyTitle = useCallback((title: GeneratedTitle) => {
+        // Guard against environments where clipboard is unavailable
+        if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            navigator.clipboard.writeText(title.text).then(() => {
+                setCopiedTitleId(title.id);
+                setCopyAnnouncement(`Copied title: ${title.text}`);
+                const t1 = window.setTimeout(() => setCopiedTitleId(null), 2000);
+                const t2 = window.setTimeout(() => setCopyAnnouncement(''), 2000);
+                copyTimeoutsRef.current.push(t1 as unknown as number, t2 as unknown as number);
+            }).catch(() => {
+                // Fallback: do nothing but avoid throwing
+            });
+        } else {
+            // Optional fallback: create a temporary textarea for older environments
+            try {
+                const textarea = document.createElement('textarea');
+                textarea.value = title.text;
+                textarea.style.position = 'fixed';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                setCopiedTitleId(title.id);
+                setCopyAnnouncement(`Copied title: ${title.text}`);
+                const t1 = window.setTimeout(() => setCopiedTitleId(null), 2000);
+                const t2 = window.setTimeout(() => setCopyAnnouncement(''), 2000);
+                copyTimeoutsRef.current.push(t1 as unknown as number, t2 as unknown as number);
+            } catch {
+                // If copy fails, silently ignore to avoid interrupting UX
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            // clear any pending copy timeouts on unmount
+            copyTimeoutsRef.current.forEach(id => window.clearTimeout(id));
+            copyTimeoutsRef.current = [];
+        };
+    }, []);
     
-    const allStats: Record<StatCardKey, { icon: string; label: string; value: string | number; unit?: string; }> = {
-        wpm: { icon: "fa-tachometer-alt", label: "Avg. Speed", value: speechAnalytics.wpm?.toFixed(0) || 0, unit: "WPM" },
+    const allStats = useMemo<Record<StatCardKey, { icon: string; label: string; value: string | number; unit?: string; }>>(() => ({
+        wpm: { icon: "fa-tachometer-alt", label: "Avg. Speed", value: speechAnalytics.wpm ? Number(speechAnalytics.wpm).toFixed(0) : 0, unit: "WPM" },
         duration: { icon: "fa-stopwatch", label: "Duration", value: speechAnalytics.duration ? new Date(speechAnalytics.duration * 1000).toISOString().substr(14, 5) : '00:00', unit: "MM:SS" },
         speakingRateLabel: { icon: "fa-rocket", label: "Speaking Rate", value: speechAnalytics.speakingRateLabel || 'Medium' },
         words: { icon: "fa-file-word", label: "Total Words", value: speechAnalytics.words || 0 },
-        avgSentenceLength: { icon: "fa-paragraph", label: "Avg. Sentence", value: speechAnalytics.avgSentenceLength?.toFixed(1) || 0, unit: "words" },
-        vocabularyRichness: { icon: "fa-book-open", label: "Vocabulary", value: speechAnalytics.vocabularyRichness?.toFixed(1) || 0, unit: "% rich" },
+        avgSentenceLength: { icon: "fa-paragraph", label: "Avg. Sentence", value: speechAnalytics.avgSentenceLength ? Number(speechAnalytics.avgSentenceLength).toFixed(1) : 0, unit: "words" },
+        vocabularyRichness: { icon: "fa-book-open", label: "Vocabulary", value: speechAnalytics.vocabularyRichness ? Number(speechAnalytics.vocabularyRichness).toFixed(1) : 0, unit: "% rich" },
         questionCount: { icon: "fa-question-circle", label: "Questions Asked", value: speechAnalytics.questionCount || 0 },
         fillers: { icon: "fa-comment-dots", label: "Filler Words", value: speechAnalytics.fillers || 0 },
         pauses: { icon: "fa-pause-circle", label: "Pauses", value: speechAnalytics.pauses || 0 },
-    };
+    }), [speechAnalytics]);
 
         // Choose the largest icon size variant that fits entirely within the nav width.
         // This prevents starting to shrink icons until the full 'normal' width would overflow.
@@ -652,11 +820,13 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
             iconSizeVariant = found || 'xs';
         }
 
-  return (
+    return (
     <div className="flex flex-col h-full cosmo-panel md:rounded-2xl p-2 md:p-4 gap-4 overflow-hidden">
       <header className="flex items-end z-10 -mx-2 md:-mx-4">
-        <nav ref={navRef} className="flex w-full px-2 md:px-4 border-b border-[rgba(var(--color-primary-rgb),0.5)]">
-                {TABS_CONFIG.map(tabConfig => {
+                {/* Accessible live region for announcements (copy feedback) */}
+                <div aria-live="polite" aria-atomic="true" className="sr-only">{copyAnnouncement}</div>
+        <nav ref={navRef} role="tablist" onKeyDown={handleNavKeyDown} className="flex w-full px-2 md:px-4 border-b border-[rgba(var(--color-primary-rgb),0.5)]">
+            {TABS_CONFIG.map(tabConfig => {
                 // Render tabs as icon-only (reverted to the original behavior)
                 const isIconOnly = true;
                 let count: number | undefined;
@@ -665,7 +835,7 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
                 
                 return (
                                                                 <div key={tabConfig.tab} className="relative">
-                                                                    <TabButton
+                                                                    <MemoTabButton
                                                                         name={tabConfig.name}
                                                                         icon={tabConfig.icon}
                                                                         tab={tabConfig.tab}
@@ -674,6 +844,8 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
                                                                         count={count}
                                                                         isIconOnly={isIconOnly}
                                                                         iconSizeVariant={iconSizeVariant}
+                                                                        // capture reference for focus management
+                                                                        ref={(el: HTMLButtonElement | null) => { tabButtonRefs.current[tabConfig.tab] = el; }}
                                                                     />
                                                                     {/* Aura pulse indicator: show a small pulsing dot when auraData exists and user isn't viewing aura */}
                                                                     {tabConfig.tab === 'aura' && auraData && activeTab !== 'aura' && (
@@ -682,7 +854,7 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
                                                                 </div>
                 );
             })}
-        </nav>
+                </nav>
       </header>
       
       {!hasAnyAnalytics && !isAnalyzing && activeTab !== 'reading' && activeTab !== 'aura' ? (
@@ -695,12 +867,41 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
       ) : (
         <>
             {activeTab === 'aura' && (
-                <div className="flex-1 flex flex-col min-h-0 z-10">
-                   <AuraVisualization auraData={auraData} liveAudioFeatures={liveAudioFeatures} settings={auraSettings} />
+                <div id={`analytics-panel-aura`} role="tabpanel" aria-labelledby={`analytics-tab-aura`} className="flex-1 flex flex-col min-h-0 z-10 gap-3">
+                    {/* Top: larger visualization area */}
+                    <div className="w-full flex-1 min-h-[340px] md:min-h-[420px] rounded-lg overflow-hidden bg-transparent">
+                        <AuraVisualization auraData={auraData} liveAudioFeatures={liveAudioFeatures} settings={auraSettings} />
+                    </div>
+                    {/* Bottom: Aura Readout moved below the visualization */}
+                    <div className="w-full p-3 rounded-lg bg-slate-900/60 border border-slate-700/50">
+                        <h4 className="text-sm font-semibold text-slate-200 mb-2">Aura Readout</h4>
+                        <div className="text-sm text-slate-300 space-y-2">
+                            <div>
+                                <div className="text-xs text-slate-400">Dominant emotion</div>
+                                <div className="font-bold text-white" id="aura-readout-dominant">{auraData?.dominantEmotion ?? '—'}</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-slate-400">Sentiment</div>
+                                <div className="font-bold text-white">{typeof auraData?.sentiment === 'number' ? (auraData.sentiment * 100).toFixed(0) + '%' : '—'}</div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-slate-400">Keywords</div>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                    {(auraData?.keywords || []).map(k => (
+                                        <span key={k} className="bg-slate-800/40 px-2 py-1 rounded text-xs text-slate-200">{k}</span>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="pt-2">
+                                <div className="text-xs text-slate-400">Tips</div>
+                                <div className="text-xs text-slate-300">Speak naturally; aura updates automatically.</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
             {activeTab === 'summary' && (
-            <div className="flex-1 flex flex-col min-h-0 z-10">
+            <div id={`analytics-panel-summary`} role="tabpanel" aria-labelledby={`analytics-tab-summary`} className="flex-1 flex flex-col min-h-0 z-10">
                 <div className="flex-1 flex flex-col min-h-0">
                     <TalkTimeVisualizer talkTimeData={speechAnalytics.talkTime || {}} speakerProfiles={speakerProfiles} />
                     <div className="flex gap-2 mb-3" data-tour-id="summary-buttons">
@@ -761,7 +962,7 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
             )}
             
             {activeTab === 'stats' && (
-                <div className="flex-1 overflow-y-auto space-y-3 pr-2 z-10">
+                <div id={`analytics-panel-stats`} role="tabpanel" aria-labelledby={`analytics-tab-stats`} className="flex-1 overflow-y-auto space-y-3 pr-2 z-10">
                     {!speechAnalytics.wpm ? <EmptyState text="No stats available." /> : (
                         <div className="flex flex-col gap-3">
                             {statCardOrder.map(key => {
@@ -799,7 +1000,7 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
 
 
             {activeTab === 'actions' && (
-                <div className="flex-1 overflow-y-auto space-y-3 z-10">
+                <div id={`analytics-panel-actions`} role="tabpanel" aria-labelledby={`analytics-tab-actions`} className="flex-1 overflow-y-auto space-y-3 z-10">
                     {isAnalyzing ? <AnalyticsItemLoader /> : actionItems.length === 0 ? <EmptyState text="No action items found." /> : (
                       actionItems.map(item => <ListItem key={item.id} icon={item.type === 'action' ? 'fa-bolt' : 'fa-gavel'} content={item.content} />)
                     )}
@@ -807,7 +1008,7 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
             )}
 
             {activeTab === 'snippets' && (
-                <div className="flex-1 overflow-y-auto space-y-3 z-10">
+                <div id={`analytics-panel-snippets`} role="tabpanel" aria-labelledby={`analytics-tab-snippets`} className="flex-1 overflow-y-auto space-y-3 z-10">
                     {isAnalyzing ? <AnalyticsItemLoader /> : snippets.length === 0 ? <EmptyState text="No key snippets found." /> : (
                       snippets.map(item => <ListItem key={item.id} icon={item.type === 'quote' ? 'fa-quote-left' : item.type === 'question' ? 'fa-question-circle' : 'fa-lightbulb'} content={item.content} />)
                     )}
@@ -815,7 +1016,7 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
             )}
 
             {activeTab === 'reading' && (
-                <div className="flex-1 flex flex-col min-h-0 z-10">
+                <div id={`analytics-panel-reading`} role="tabpanel" aria-labelledby={`analytics-tab-reading`} className="flex-1 flex flex-col min-h-0 z-10">
                     {isReading ? (
                         <CosmicReadingLoader />
                     ) : cosmicReading ? (
@@ -855,11 +1056,11 @@ const EmptyState: React.FC<{text: string}> = ({ text }) => (
     </div>
 );
 
-const ListItem: React.FC<{icon: string, content: string}> = ({icon, content}) => (
+const ListItem: React.FC<{icon: string, content: string}> = memo(({icon, content}) => (
     <div className="flex items-start gap-3 bg-slate-800/50 p-3 rounded-lg">
-        <i className={`fas ${icon} text-[var(--color-accent)] pt-1 w-5 text-center`}></i>
+        <i className={`fas ${icon} text-[var(--color-accent)] pt-1 w-5 text-center`} aria-hidden="true"></i>
         <p className="flex-1 text-sm text-slate-300">{content}</p>
     </div>
-)
+));
 
 export default AnalyticsPanel;

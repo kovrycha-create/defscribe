@@ -12,3 +12,110 @@ body {
   background: #0b1020;
   color: #e6eef8;
 }
+
+/* Mobile-first responsive & accessibility helpers */
+:root {
+  --touch-target: 44px; /* recommended min target */
+  --safe-area-inset-top: env(safe-area-inset-top, 0px);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
+  --base-font-size: 16px;
+  --bottom-nav-height: 64px; /* default height of bottom nav (override per component if needed) */
+}
+
+html {
+  font-size: var(--base-font-size);
+  -webkit-text-size-adjust: 100%; /* prevent iOS from auto-scaling text */
+}
+
+/* Improve tap targets and spacing */
+.touch-target {
+  min-height: var(--touch-target);
+  min-width: var(--touch-target);
+  padding: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Safe area-aware bottom navbar spacing */
+.safe-bottom-pad {
+  padding-bottom: calc(var(--safe-area-inset-bottom) + 8px);
+}
+
+/* Mobile-first layout constraints */
+@media (max-width: 768px) {
+  body {
+    overflow: auto; /* allow natural scrolling on mobile */
+  }
+
+  .cosmo-panel {
+    border-radius: 12px;
+    padding: 0.75rem;
+  }
+
+  /* Increase readability on small screens */
+  h1, h2, h3, h4, h5 { line-height: 1.15; }
+  p, input, button, .cosmo-input { font-size: 15px; }
+
+  /* Make buttons easier to tap */
+  .cosmo-button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0.5rem 0.75rem;
+    font-size: 15px;
+    border-radius: 10px;
+  }
+
+  /* Bottom nav should respect safe area and be slightly larger */
+  nav[role='navigation'], .bottom-nav, .safe-bottom-pad {
+    padding-bottom: calc(var(--safe-area-inset-bottom) + 10px);
+  }
+
+  /* Reserve space at the bottom of panels/content so fixed bottom nav doesn't overlap controls */
+  .has-bottom-nav, .app-root, main, .page-content {
+    padding-bottom: calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom) + 12px);
+  }
+
+  /* Ensure panels respect reserved bottom space */
+  .cosmo-panel {
+    padding-bottom: calc(var(--bottom-nav-height) + var(--safe-area-inset-bottom) + 12px);
+  }
+
+
+/* On narrow viewports, make the bottom nav sticky (remains in flow so it occupies space)
+   This prevents it from overlapping content when using mobile emulation on desktop. */
+@media (max-width: 768px) {
+  .bottom-nav {
+    position: sticky !important;
+    position: -webkit-sticky !important;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    z-index: 40; /* still above content visually */
+    /* Ensure it doesn't float above content; by being in-flow it will push content up */
+  }
+}
+  /* Visualizer: cap height on smaller devices for faster paint and to keep content visible */
+  .visualizer-resizer-handle { height: 8px; }
+}
+
+/* Touch friendly hover fallbacks: remove hover-only states for touch devices */
+@media (hover: none) and (pointer: coarse) {
+  a:hover, button:hover { transform: none; }
+}
+
+/* Reduced-motion and low-power devices adjustments */
+@media (prefers-reduced-motion: reduce), (prefers-reduced-transitions: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+/* High-contrast preference (WCAG) */
+@media (prefers-contrast: more) {
+  :root {
+    --color-text-primary: #fff;
+    --color-text-secondary: #ddd;
+  }
+  body { background-color: #000; }
+}
+
