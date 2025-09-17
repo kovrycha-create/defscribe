@@ -431,6 +431,8 @@ const useSpeechRecognition = ({ spokenLanguage, addToast, isRecordingEnabled }: 
     };
 
     return () => {
+      // Cleanup on unmount or when isCloudMode changes
+      stopListening();
       if (recognitionRef.current) {
         (recognitionRef.current as any).onresult = undefined;
         recognitionRef.current.onend = null;
@@ -439,7 +441,7 @@ const useSpeechRecognition = ({ spokenLanguage, addToast, isRecordingEnabled }: 
         recognitionRef.current = null;
       }
     };
-  }, [isCloudMode]);
+  }, [isCloudMode, stopListening]);
 
   useEffect(() => {
     if (isListening && mediaRecorderRef.current && prevIsRecordingEnabled !== isRecordingEnabled) {

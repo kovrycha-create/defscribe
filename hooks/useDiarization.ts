@@ -122,7 +122,15 @@ const useDiarization = (
     if (currentSegmentRef.current) {
         const segment = { ...currentSegmentRef.current, endMs: endTime };
         if (segment.endMs - segment.startMs >= MIN_SEGMENT_DURATION_MS) {
-            setSegments(prev => [...prev, segment]);
+            setSegments(prev => {
+                const last = prev[prev.length - 1];
+                // Merge with last segment if it's the same speaker and they are close
+                if (last && last.speakerId === segment.speakerId && segment.startMs - last.endMs < 500) {
+                    const newLast = { ...last, endMs: segment.endMs };
+                    return [...prev.slice(0, -1), newLast];
+                }
+                return [...prev, segment];
+            });
         }
     }
     currentSegmentRef.current = null;

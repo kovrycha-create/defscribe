@@ -1,13 +1,12 @@
 
 
-
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { type ChatMessage } from '../types';
 import Tooltip from './Tooltip';
 import { translateText } from '../services/geminiService';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { Sanitizer } from '../utils/sanitizer';
 
 interface TranscriptChatProps {
   transcript: string;
@@ -257,9 +256,9 @@ const TranscriptChat: React.FC<TranscriptChatProps> = ({ transcript, onClose, tr
                 <div key={msg.id} className={`relative group flex gap-3 ${msg.role === 'user' ? 'justify-end items-end' : 'items-start'} pt-5`}>
                   {msg.role === 'model' && <div className="w-8 h-8 rounded-full bg-[var(--color-primary)] flex items-center justify-center flex-shrink-0 hex-clip"><i className="fas fa-robot text-black"></i></div>}
                   <div className={`max-w-[80%] rounded-2xl p-3 leading-relaxed ${msg.role === 'user' ? 'bg-[var(--color-secondary)] text-white' : 'bg-slate-700'}`}>
-                      <p className={`${textSizeClasses[textSize]}`}>{msg.text}</p>
+                      <p className={`${textSizeClasses[textSize]}`}>{Sanitizer.sanitizeTranscript(msg.text)}</p>
                       {msg.isLoading && <span className="inline-block w-2 h-2 bg-slate-300 rounded-full ml-2 animate-ping"></span>}
-                      {msg.translatedText && <p className={`italic text-slate-400 mt-2 pt-2 border-t border-slate-600/50 ${textSizeClasses[textSize]}`}>{msg.translatedText}</p>}
+                      {msg.translatedText && <p className={`italic text-slate-400 mt-2 pt-2 border-t border-slate-600/50 ${textSizeClasses[textSize]}`}>{Sanitizer.sanitizeTranscript(msg.translatedText)}</p>}
                   </div>
                    {msg.role === 'model' && !msg.isLoading && msg.text && msg.id !== 'info-mobile' && (
                        <div className="absolute top-0 left-12 z-20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-slate-800/90 backdrop-blur-sm rounded-full border border-slate-600 p-1 shadow-lg">

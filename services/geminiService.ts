@@ -1,6 +1,4 @@
 
-
-
 import { GoogleGenAI, Type, GenerateContentResponse, Chat } from '@google/genai';
 // FIX: Added AuraData type for the new generateAuraData function.
 import { type SummaryStyle, type Emotion, type ActionItem, type Snippet, type TopicSegment, type CosmicReading, type AuraData } from '../types';
@@ -14,36 +12,76 @@ import { strandRelations } from '../data/strandRelations';
 
 const model = 'gemini-2.5-flash';
 
+class GeminiAPIError extends Error {
+    constructor(
+        message: string,
+        public code?: string,
+        public statusCode?: number,
+        public retryable: boolean = false
+    ) {
+        super(message);
+        this.name = 'GeminiAPIError';
+    }
+}
+
 // --- Helper for Gemini API calls ---
 async function callGemini<T>(
     prompt: string | { parts: any[] },
-    schema?: any
+    schema?: any,
+    options: { retries?: number, timeout?: number } = {}
 ): Promise<T> {
+    const { retries = 3, timeout = 30000 } = options;
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const config = schema ? { responseMimeType: "application/json", responseSchema: schema } : {};
     
-    const response: GenerateContentResponse = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config,
-    });
+    let lastError: Error | null = null;
 
-    const text = response.text;
-    if (schema) {
+    for (let attempt = 0; attempt < retries; attempt++) {
         try {
-            // FIX: Gemini can sometimes wrap the JSON in ```json ... ```, so we strip it.
-            const jsonText = (text || '').trim().replace(/^```json/i, '').replace(/```$/, '').trim();
-            return JSON.parse(jsonText);
-        } catch (parseError) {
-            console.error('Failed to parse Gemini JSON response:', text);
-            console.error('Parse error details:', parseError);
-            throw new Error('Failed to parse AI response. The response was not valid JSON.');
+            const generatePromise = ai.models.generateContent({
+                model,
+                contents: prompt,
+                config,
+            });
+
+            const timeoutPromise = new Promise<GenerateContentResponse>((_, reject) =>
+                setTimeout(() => reject(new GeminiAPIError(`API call timed out after ${timeout}ms`, 'TIMEOUT', 408, true)), timeout)
+            );
+
+            const response = await Promise.race([generatePromise, timeoutPromise]);
+            
+            const text = response.text;
+            if (schema) {
+                try {
+                    const jsonText = (text || '').trim().replace(/^```json/i, '').replace(/```$/, '').trim();
+                    if (!jsonText) throw new Error("Empty JSON response from AI.");
+                    return JSON.parse(jsonText);
+                } catch (parseError) {
+                    const error = parseError as Error;
+                    console.error('Failed to parse Gemini JSON response:', text, error);
+                    throw new GeminiAPIError(`Failed to parse AI response: ${error.message}`, 'PARSE_ERROR', 500, true);
+                }
+            } else {
+                return { text } as T;
+            }
+        } catch (error) {
+            lastError = error as Error;
+            console.error(`Gemini call attempt ${attempt + 1} failed:`, error);
+            if (error instanceof GeminiAPIError && !error.retryable) {
+                throw error;
+            }
+            if (attempt < retries - 1) {
+                const delay = Math.pow(2, attempt) * 1000;
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
         }
-    } else {
-        // For non-JSON responses, wrap it in a simple object to maintain a consistent return type structure.
-        return { text } as T;
     }
+    
+    console.error("Gemini call failed after all retries.", lastError);
+    if (lastError instanceof GeminiAPIError) throw lastError;
+    throw new GeminiAPIError(lastError?.message || 'Max retries exceeded', 'MAX_RETRIES', 500, false);
 }
+
 
 // --- List of possible emotions for the AI to choose from ---
 const newEmotions = [
