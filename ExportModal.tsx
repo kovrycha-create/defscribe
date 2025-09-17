@@ -1,7 +1,7 @@
 // FIX: Imported `useMemo` from React to resolve the 'Cannot find name' error.
 import React, { useState, useCallback, useMemo } from 'react';
-import { type TranscriptEntry, type SpeakerProfile, type SpeakerId, type SpeechAnalytics, type DiarizationSettings, type ActionItem, type Snippet, type TopicSegment } from '../types';
-import { useFocusTrap } from '../hooks/useFocusTrap';
+import { type TranscriptEntry, type SpeakerProfile, type SpeakerId, type SpeechAnalytics, type DiarizationSettings, type ActionItem, type Snippet, type TopicSegment } from './types';
+import { useFocusTrap } from './hooks/useFocusTrap';
 
 interface ExportModalProps {
   isOpen: boolean;

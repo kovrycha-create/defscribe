@@ -173,6 +173,7 @@ const useSpeechRecognition = ({ spokenLanguage, addToast, isRecordingEnabled }: 
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
+      console.debug('useSpeechRecognition: stream stopped and cleared');
     }
     setStream(null);
     
@@ -245,6 +246,8 @@ const useSpeechRecognition = ({ spokenLanguage, addToast, isRecordingEnabled }: 
     try {
         const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         streamRef.current = mediaStream;
+        // Debug: report that we acquired a media stream for speech recognition
+        console.debug('useSpeechRecognition: acquired mediaStream', { tracks: mediaStream.getTracks().length });
         setStream(mediaStream);
 
         setTranscript('');
@@ -287,6 +290,16 @@ const useSpeechRecognition = ({ spokenLanguage, addToast, isRecordingEnabled }: 
                     }
                 }
                 const pitch = maxIndex * (audioContext.sampleRate / analyser.fftSize);
+
+                // Debug: occasionally emit live audio feature logs
+                try {
+                  const now = Date.now();
+                  const lastLog = (analyze as any).__lastLog || 0;
+                  if (now - lastLog > 3000 || volume > 0.05) {
+                    console.debug('useSpeechRecognition: liveAudioFeatures', { volume, pitch });
+                    (analyze as any).__lastLog = now;
+                  }
+                } catch (e) {}
 
                 setLiveAudioFeatures({ volume, pitch });
             }

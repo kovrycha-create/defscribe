@@ -18,7 +18,6 @@ import CursorTrail from './components/CursorTrail';
 import Resizer from './components/Resizer';
 import CollapsedPanelTab from './components/CollapsedPanelTab';
 import HistoryModal from './components/HistoryModal';
-import Tooltip from './components/Tooltip';
 import { useFocusTrap } from './hooks/useFocusTrap';
 
 // --- Hooks ---
@@ -34,9 +33,8 @@ import { useSessionHistory } from './hooks/useSessionHistory';
 
 // --- Types & Constants ---
 // FIX: Added ReframingResult to the import to support the new reframing feature.
-import { type SummaryStyle, type Emotion, type ProactiveMessage, type GeneratedTitle, type Session, type CosmicReading, type ChatMessage, type ReframingResult } from './types';
+import { type SummaryStyle, type ProactiveMessage, type Session, type ChatMessage, type ReframingResult } from './types';
 import { AVATAR_EMOTIONS } from './constants';
-import * as SAMPLE_DATA from './sample-data';
 import { getWwydResponse, type WwydMessage, createYmzoChat } from './services/geminiService';
 
 // --- Lore Data ---
@@ -382,6 +380,7 @@ const App: React.FC = () => {
     translationLanguage: settings.translationLanguage,
     isCloudMode,
     stream,
+    liveAudioFeatures,
   });
   
   const analytics = useAnalytics({
@@ -488,10 +487,6 @@ const App: React.FC = () => {
   const [isImmersive, setIsImmersive] = useState(false);
   
   // Panel resizing logic
-  const [isResizing, setIsResizing] = useState(false);
-  const handleResize = useCallback((setter: React.Dispatch<React.SetStateAction<number>>, deltaX: number) => {
-    setter(prev => Math.max(200, Math.min(prev + deltaX, window.innerWidth - 600)));
-  }, []);
 
   const handlePanelLayout = useCallback((key: 'leftPanelWidth' | 'rightPanelWidth', delta: number) => {
       settings.setPanelLayout(prev => ({ ...prev, [key]: Math.max(300, Math.min(prev[key] + delta, 600)) }));
@@ -630,13 +625,13 @@ const App: React.FC = () => {
                     shortcuts={shortcuts}
                     isMobileView={isMobileView}
                     isTrueMobile={isTrueMobile}
-                    setViewModeOverride={settings.setViewModeOverride}
                     isSettingsCollapsed={settings.panelLayout.isLeftPanelCollapsed}
                     setIsSettingsCollapsed={() => handlePanelCollapse('isLeftPanelCollapsed')}
                     isTourActive={isTourActive}
                     onWwyd={handleWwyd}
                     isWwydLoading={isWwydLoading}
-                    {...settings}
+          speakerProfiles={speakerProfiles}
+          {...settings}
                 />
               </div>
               <div className={`flex-1 min-h-0 ${activeMobileTab === 'transcript' ? '' : 'hidden'}`} data-tour-id="transcript-panel">
@@ -698,6 +693,7 @@ const App: React.FC = () => {
                     onGenerateTitles={() => analytics.handleGenerateTitles(transcriptEntries.map(e => e.text).join('\n'))}
                     hasEnoughContent={transcriptEntries.length > 3}
                     speechAnalytics={analytics.speechAnalytics}
+                    segments={segments}
                     speakerProfiles={speakerProfiles}
                     transcriptEntries={transcriptEntries}
                     highlightedTopic={highlightedTopic}
@@ -752,12 +748,12 @@ const App: React.FC = () => {
                     shortcuts={shortcuts}
                     isMobileView={isMobileView}
                     isTrueMobile={isTrueMobile}
-                    setViewModeOverride={settings.setViewModeOverride}
                     isSettingsCollapsed={settings.panelLayout.isLeftPanelCollapsed}
                     setIsSettingsCollapsed={() => handlePanelCollapse('isLeftPanelCollapsed')}
                     isTourActive={isTourActive}
                     onWwyd={handleWwyd}
                     isWwydLoading={isWwydLoading}
+                    speakerProfiles={speakerProfiles}
                     {...settings}
                   />
                 </div>
@@ -836,6 +832,7 @@ const App: React.FC = () => {
                       onGenerateTitles={() => analytics.handleGenerateTitles(transcriptEntries.map(e => e.text).join('\n'))}
                       hasEnoughContent={transcriptEntries.length > 3}
                       speechAnalytics={analytics.speechAnalytics}
+                      segments={segments}
                       speakerProfiles={speakerProfiles}
                       transcriptEntries={transcriptEntries}
                       highlightedTopic={highlightedTopic}
@@ -905,6 +902,7 @@ const App: React.FC = () => {
           <Toast key={toast.id} toast={toast} onDismiss={id => setToasts(prev => prev.filter(t => t.id !== id))} />
         ))}
       </div>
+    {/* Diarization debug overlay removed per UX cleanup request */}
       
       {error && <div className="fixed bottom-0 left-0 bg-red-800 text-white p-2 text-sm z-[300]">{`Error: ${error}`}</div>}
     </ErrorBoundary>

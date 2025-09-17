@@ -1,4 +1,5 @@
 import React from 'react';
+import Tooltip from './Tooltip';
 
 interface CollapsedPanelTabProps {
   title: string;
@@ -8,17 +9,16 @@ interface CollapsedPanelTabProps {
 
 const CollapsedPanelTab: React.FC<CollapsedPanelTabProps> = ({ title, icon, onClick }) => {
   return (
-    <div
-      className="collapsed-panel-tab"
-      onClick={onClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); }}
-      aria-label={`Restore ${title} panel`}
-    >
-      <i className={`fas ${icon} collapsed-icon`}></i>
-      <span className="collapsed-text">{title}</span>
-    </div>
+    <Tooltip content={title}>
+      <button
+        className="collapsed-panel-tab p-2 rounded-r-lg bg-slate-900/60 hover:bg-slate-800/60 border-l border-slate-700 text-slate-200"
+        onClick={onClick}
+        aria-label={`Restore ${title} panel`}
+        title={title}
+      >
+        <i className={`fas ${icon} collapsed-icon text-lg`} aria-hidden="true"></i>
+      </button>
+    </Tooltip>
   );
 };
 

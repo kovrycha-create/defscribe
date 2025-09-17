@@ -57,7 +57,7 @@ const StarfieldBackground: React.FC<{ analyser: AnalyserNode | null; }> = React.
             const primaryRgb = rootStyle.getPropertyValue('--color-primary-rgb').trim();
             const secondaryRgb = rootStyle.getPropertyValue('--color-secondary-rgb').trim();
             const accentRgb = rootStyle.getPropertyValue('--color-accent-rgb').trim();
-            const themeRgbColors = [primaryRgb, secondaryRgb, accentRgb].filter(Boolean);
+                const themeRgbColors = [primaryRgb, secondaryRgb, accentRgb].filter(Boolean);
 
             stars = [];
             for (let i = 0; i < numStars; i++) {
@@ -89,16 +89,14 @@ const StarfieldBackground: React.FC<{ analyser: AnalyserNode | null; }> = React.
         const draw = () => {
             let warpFactor = 0;
             if (analyser) {
+                // create local arrays with explicit ArrayBuffer backing to satisfy TS in isolatedModules
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
-                analyser.getByteFrequencyData(dataArray);
+                (analyser as any).getByteFrequencyData(dataArray);
                 const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
                 warpFactor = (avg / 255) * 4;
             }
             
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            const primaryRgb = getComputedStyle(document.documentElement).getPropertyValue('--color-primary-rgb').trim() || '77, 138, 255';
-            const time = Date.now() * 0.0002;
 
             ctx.fillStyle = `rgb(5, 8, 10)`;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -182,7 +180,7 @@ const DigitalRainBackground: React.FC<{ analyser: AnalyserNode | null; themeColo
             let audioEnergy = 1.0;
             if (analyser) {
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
-                analyser.getByteFrequencyData(dataArray);
+                (analyser as any).getByteFrequencyData(dataArray);
                 const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
                 const normalizedAvg = avg / 255.0; // 0 to 1
                 audioEnergy = 0.5 + normalizedAvg * 1.0; // Range 0.5 to 1.5 for smoother dynamics
@@ -390,16 +388,16 @@ const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColor
     animationFrameId.current = requestAnimationFrame(drawIdle);
   }, [themeColors]);
 
-  const draw = useCallback(() => {
-    const currentAnalyser = analyser.current;
-    const currentDataArray = dataArray.current;
-    const currentFrequencyArray = frequencyArray.current;
-    const canvas = canvasRef.current;
-    
-    if (!currentAnalyser || !currentDataArray || !currentFrequencyArray || !canvas) return;
-    
-    currentAnalyser.getByteTimeDomainData(currentDataArray);
-    currentAnalyser.getByteFrequencyData(currentFrequencyArray);
+    const draw = useCallback(() => {
+        const currentAnalyser = analyser.current;
+        const canvas = canvasRef.current;
+        if (!currentAnalyser || !canvas) return;
+
+        // create local arrays with concrete ArrayBuffer backing each frame to satisfy TS types
+        const localTimeData = new Uint8Array(currentAnalyser.fftSize);
+        const localFreqData = new Uint8Array(currentAnalyser.frequencyBinCount);
+        currentAnalyser.getByteTimeDomainData(localTimeData);
+        currentAnalyser.getByteFrequencyData(localFreqData);
 
     const ctx = canvas.getContext('2d');
     const W = canvas.offsetWidth;
@@ -412,22 +410,22 @@ const Visualizer: React.FC<VisualizerProps> = ({ isListening, stream, themeColor
         if (!activeStyles[style]) return;
         switch (style) {
             case 'wave':
-                drawWave(ctx, W, H, currentDataArray, themeColors, sensitivity);
+                drawWave(ctx, W, H, localTimeData, themeColors, sensitivity);
                 break;
             case 'bars':
-                drawMirroredBars(ctx, W, H, currentFrequencyArray, themeColors, sensitivity, barPeaks.current);
+                drawMirroredBars(ctx, W, H, localFreqData, themeColors, sensitivity, barPeaks.current);
                 break;
             case 'nexus':
-                drawNexus(ctx, W, H, currentFrequencyArray, themeColors, sensitivity, nexusParticles.current, nexusTendrils.current);
+                drawNexus(ctx, W, H, localFreqData, themeColors, sensitivity, nexusParticles.current, nexusTendrils.current);
                 break;
             case 'classic':
-                drawClassicBars(ctx, W, H, currentFrequencyArray, themeColors, sensitivity, classicBarPeaks.current);
+                drawClassicBars(ctx, W, H, localFreqData, themeColors, sensitivity, classicBarPeaks.current);
                 break;
         }
     });
 
-    drawBass(ctx, W, H, currentFrequencyArray, themeColors, bassPulses.current);
-    drawParticles(ctx, W, H, currentFrequencyArray, themeColors, particles.current);
+    drawBass(ctx, W, H, localFreqData, themeColors, bassPulses.current);
+    drawParticles(ctx, W, H, localFreqData, themeColors, particles.current);
     
     animationFrameId.current = requestAnimationFrame(draw);
   }, [activeStyles, sensitivity, themeColors, styleOrder]);

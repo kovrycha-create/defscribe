@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import Visualizer from '../Visualizer';
-import TranscriptDisplay from '../TranscriptDisplay';
-import Tooltip from '../Tooltip';
-import SpeakerEditorModal from '../SpeakerEditorModal';
-import AudioPlayer from '../AudioPlayer';
-import RecordingControls from '../RecordingControls';
-import ProactiveAssistantMessage from '../ProactiveAssistantMessage';
-import { type TranscriptEntry, type SpeakerId, type SpeakerProfile, type VisualizerBackground, type ProactiveMessage, ReframingResult } from '../../types';
+import Visualizer from './Visualizer';
+import TranscriptDisplay from './TranscriptDisplay';
+import Tooltip from './Tooltip';
+import SpeakerEditorModal from './SpeakerEditorModal';
+import AudioPlayer from './AudioPlayer';
+import RecordingControls from './RecordingControls';
+import ProactiveAssistantMessage from './ProactiveAssistantMessage';
+import { type TranscriptEntry, type SpeakerId, type SpeakerProfile, type VisualizerBackground, type ProactiveMessage, ReframingResult } from '../types';
 
 interface MainContentPanelProps {
   isListening: boolean;
@@ -296,6 +296,7 @@ const MainContentPanel: React.FC<MainContentPanelProps> = ({
             reframingResults={reframingResults}
             onReframeEntry={handleReframeEntry}
             onOpenCodex={onOpenCodex}
+            censorLanguage={false}
           />
         </div>
       </div>

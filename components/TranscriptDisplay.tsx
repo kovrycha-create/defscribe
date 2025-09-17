@@ -4,27 +4,32 @@ import Tooltip from './Tooltip';
 import { CENSOR_WORDS } from '../constants';
 
 const censorProfanity = (text: string, shouldCensor: boolean): string => {
-    if (!shouldCensor || !text) {
+    if (!text) return text;
+    if (!shouldCensor) {
+        // debug: censorship disabled, return original
+        try { console.debug('[TranscriptDisplay] censorProfanity: censorship disabled, returning original text:', text); } catch (e) {}
         return text;
     }
     const regex = new RegExp(`\\b(${Array.from(CENSOR_WORDS).join('|')})\\b`, 'gi');
-    return text.replace(regex, (match) => '*'.repeat(match.length));
+    const result = text.replace(regex, (match) => '*'.repeat(match.length));
+    try { console.debug('[TranscriptDisplay] censorProfanity: original -> censored', { original: text, censored: result }); } catch (e) {}
+    return result;
 };
 
 const SpeakerTag: React.FC<{ profile: SpeakerProfile; onClick: (speakerId: SpeakerId) => void }> = ({ profile, onClick }) => {
-  const speakerNum = profile.id.replace('S', '');
-  return (
-    <Tooltip content={`Edit ${profile.label}`}>
-      <button 
-        onClick={() => onClick(profile.id)}
-        className="w-8 h-8 text-xs font-bold flex items-center justify-center flex-shrink-0 text-white shadow-md transition-all duration-300 hover:scale-110 hover:animate-[pulse-glow_1.5s_ease-in-out_infinite] hex-clip"
-        style={{ '--color': profile.color, backgroundColor: profile.color } as React.CSSProperties}
-        aria-label={`Speaker ${speakerNum}, ${profile.label}. Click to edit.`}
-      >
-        {speakerNum}
-      </button>
-    </Tooltip>
-  );
+    const speakerNum = profile.id.replace('S', '');
+    return (
+        <Tooltip content={`Edit ${profile.label}`}>
+            <button 
+                onClick={() => onClick(profile.id)}
+                className="w-6 h-6 text-[11px] font-semibold flex items-center justify-center flex-shrink-0 text-white transition-colors rounded-full ring-1 ring-white/10"
+                style={{ backgroundColor: profile.color, boxShadow: '0 1px 4px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.06)' } as React.CSSProperties}
+                aria-label={`Speaker ${speakerNum}, ${profile.label}. Click to edit.`}
+            >
+                {speakerNum}
+            </button>
+        </Tooltip>
+    );
 };
 
 interface ActionsMenuProps {
@@ -288,6 +293,18 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
 }) => {
   const textSizeClasses = { sm: 'text-sm', base: 'text-base', lg: 'text-lg', xl: 'text-2xl' };
 
+    // Displayed live speaker smoothing: keep the last non-null active speaker so UI doesn't flicker
+    const [displayedLiveSpeaker, setDisplayedLiveSpeaker] = useState<SpeakerId | null>(activeSpeaker);
+    const lastSeenRef = useRef<SpeakerId | null>(activeSpeaker);
+
+    useEffect(() => {
+        if (activeSpeaker) {
+            lastSeenRef.current = activeSpeaker;
+            setDisplayedLiveSpeaker(activeSpeaker);
+        }
+        // if activeSpeaker becomes null, intentionally keep showing lastSeenRef.current to avoid flicker
+    }, [activeSpeaker]);
+
   const renderHighlightedText = useCallback((text: string): React.ReactNode => {
     if (!searchQuery.trim() && !highlightedTopic) {
       return text;
@@ -323,8 +340,8 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
 
   const liveTextToRender = censorProfanity(liveText, censorLanguage);
 
-  return (
-    <div ref={containerRef} className="h-full overflow-y-auto pr-2">
+    return (
+        <div ref={containerRef} className="h-full overflow-y-auto pr-2 pb-4">
       {entries.map((entry) => (
         <TranscriptEntryComponent
           key={entry.id}
@@ -375,17 +392,17 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
               )}
               <div className={`flex-1 pt-1 ${!showTimestamps ? 'pl-2' : ''}`}>
                   <div className="flex items-start gap-2">
-                      {diarizationEnabled && activeSpeaker && speakerProfiles[activeSpeaker] && (
-                          <div className="flex items-center justify-center gap-1 pt-0">
-                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white hex-clip" style={{ backgroundColor: speakerProfiles[activeSpeaker].color, opacity: 0.9 }}>
-                                {activeSpeaker.replace('S','')}
-                              </div>
-                          </div>
-                      )}
+                                            {diarizationEnabled && (displayedLiveSpeaker || activeSpeaker) && speakerProfiles[(displayedLiveSpeaker || activeSpeaker) as SpeakerId] && (
+                                                    <div className="flex items-center justify-center gap-1 pt-0 transition-all duration-300">
+                                                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white hex-clip" style={{ backgroundColor: speakerProfiles[(displayedLiveSpeaker || activeSpeaker) as SpeakerId].color, opacity: 0.95, transition: 'background-color 200ms ease' }}>
+                                                                {(displayedLiveSpeaker || activeSpeaker)!.replace('S','')}
+                                                            </div>
+                                                    </div>
+                                            )}
                       <div className="flex-1">
-                          <p className={`italic leading-relaxed text-slate-300 ${textSizeClasses[transcriptTextSize]}`}>
+                          <p className={`italic text-slate-300 ${textSizeClasses[transcriptTextSize]}`} style={{ lineHeight: 1.5 }}>
                               {renderHighlightedText(liveTextToRender)}
-                              {liveTextState === 'visible' && <span className="inline-block w-0.5 h-4 bg-white/70 ml-1 animate-[cursor-blink_1s_step-end_infinite]"></span>}
+                              {liveTextState === 'visible' && <span className="inline-block w-0.5 bg-white/70 ml-1 align-text-top animate-[cursor-blink_1s_step-end_infinite]" style={{ height: '1em' }} />}
                           </p>
                       </div>
                   </div>

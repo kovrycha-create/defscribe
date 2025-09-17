@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Tooltip from '../Tooltip';
 import { THEME_PRESETS, SPOKEN_LANGUAGES, SPOKEN_LANGUAGES_REVERSE } from '../../constants';
-import { type DiarizationSettings } from '../../types';
+import { type DiarizationSettings, type SpeakerProfile } from '../../types';
 import BackgroundPenLogo from '../BackgroundPenLogo';
 import CustomSelect from '../CustomSelect';
 import ViewSwitcher from '../ViewSwitcher';
@@ -20,13 +20,14 @@ type SettingsTabsProps = Pick<ControlPanelProps,
   | 'diarizationSettings' | 'setDiarizationSettings' | 'translationLanguage' | 'setTranslationLanguage'
   | 'spokenLanguage' | 'setSpokenLanguage' | 'liveTranslationEnabled' | 'setLiveTranslationEnabled'
   | 'themeId' | 'setThemeId' | 'customThemeColors' | 'setCustomThemeColors' | 'isTrueMobile'
+  | 'speakerProfiles'
 >;
 
 // New component defined inline to adhere to project structure constraints
 const SettingsTabs: React.FC<SettingsTabsProps> = ({
   diarizationSettings, setDiarizationSettings, translationLanguage, setTranslationLanguage,
   spokenLanguage, setSpokenLanguage, liveTranslationEnabled, setLiveTranslationEnabled,
-  themeId, setThemeId, customThemeColors, setCustomThemeColors, isTrueMobile
+  themeId, setThemeId, customThemeColors, setCustomThemeColors, isTrueMobile, speakerProfiles
 }) => {
   const [activeTab, setActiveTab] = useState<'ai' | 'appearance'>('ai');
   const [isCustomThemeOpen, setIsCustomThemeOpen] = useState(false);
@@ -104,17 +105,35 @@ const SettingsTabs: React.FC<SettingsTabsProps> = ({
                 </label>
               </div>
               {diarizationSettings.enabled && (
-                <div className="flex items-center gap-2 pl-2">
-                  <label htmlFor="speaker-count" className="text-xs text-slate-400">Speakers:</label>
-                  <input
-                    id="speaker-count"
-                    type="number"
-                    min="1"
-                    max="6"
-                    value={diarizationSettings.expectedSpeakers}
-                    onChange={(e) => setDiarizationSettings({ ...diarizationSettings, expectedSpeakers: parseInt(e.target.value, 10) })}
-                    className="w-16 cosmo-input rounded-md p-1 text-center text-sm"
-                  />
+                <div className="mt-2 p-2 bg-slate-800/50 rounded-lg border border-[var(--color-primary)]/30 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                        <div className="relative flex items-center gap-2">
+                            <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse" />
+                            <span className="text-xs text-[var(--color-primary)]">Speaker detection active</span>
+                        </div>
+                        <div className="ml-2 text-xs text-slate-500">
+                          {(() => {
+                            const profiles = speakerProfiles || (diarizationSettings as any).speakerProfiles || {};
+                            const count = Object.keys(profiles).length;
+                            return `${count} speaker${count !== 1 ? 's' : ''} detected`;
+                          })()}
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="speaker-count" className="text-xs text-slate-400">Speakers:</label>
+                      <select id="speaker-count" value={diarizationSettings.expectedSpeakers === 0 ? 'auto' : String(diarizationSettings.expectedSpeakers)} onChange={(e) => {
+                          const val = e.target.value === 'auto' ? 0 : parseInt(e.target.value, 10);
+                          setDiarizationSettings({ ...diarizationSettings, expectedSpeakers: val });
+                      }} className="cosmo-input rounded-md p-1 text-sm bg-slate-800 text-slate-200">
+                        <option value="auto">Auto</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                      </select>
+                    </div>
                 </div>
               )}
             </div>
@@ -227,6 +246,7 @@ interface ControlPanelProps {
   isWwydLoading: boolean;
   censorLanguage: boolean;
   setCensorLanguage: (value: boolean | ((prevState: boolean) => boolean)) => void;
+  speakerProfiles?: Record<string, SpeakerProfile>;
 }
 
 const IconButton: React.FC<{
@@ -305,7 +325,7 @@ const HotkeysTooltipContent: React.FC<{ shortcuts: Shortcut[] }> = ({ shortcuts 
 const ControlPanel: React.FC<ControlPanelProps> = (props) => {
   const { isListening, isAnalyzing, isSummarizing, wpm, confidence, finalTranscript, onStart, onStop, onClear, onGoImmersive, isImmersiveButtonGlowing, isStartButtonGlowing,
   isMobileView, isTrueMobile, onExport, onHistory, onOpenCodex, onOpenYmzoChat, sessionActive, hasContent, shortcuts, setViewModeOverride, 
-  isSettingsCollapsed, isTourActive, onWwyd, isWwydLoading, setCensorLanguage } = props;
+  isSettingsCollapsed, isTourActive, onWwyd, isWwydLoading, setCensorLanguage, speakerProfiles } = props;
   
   const [isExportButtonFlashing, setIsExportButtonFlashing] = useState(false);
   // FIX: Added local state to control the settings section, decoupling it from the main panel's collapse state.
@@ -358,13 +378,17 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
               boxShadow: `inset 0 0 10px rgba(var(--color-primary-rgb), 0.2)`
             }}
           ></div>
-          <div className="relative z-10 text-center">
-              <h1 className="text-2xl font-russo-one tracking-wider text-white" style={{ textShadow: `0 0 10px rgba(var(--color-primary-rgb), 0.7)`}}>DefScribe</h1>
-              <p className="text-xs text-slate-400">Advanced Dictation Assistant</p>
+          <div className="relative z-10 flex justify-center">
+              <img 
+                src="https://defscribe.app/logo.png" 
+                alt="DefScribe" 
+                className="h-12 w-auto"
+                style={{ filter: 'drop-shadow(0 0 10px rgba(var(--color-primary-rgb), 0.7))' }}
+              />
           </div>
         </div>
         <div className="flex items-center justify-center px-2">
-          <a href="https://paypal.me/deffy" target="_blank" rel="noopener noreferrer" aria-label="Donate to the developer" onContextMenu={handleLogoContextMenu}>
+          <a href="https://paypal.me/deffy" target="_blank" rel="noopener noreferrer" aria-label={`Donate to the developer. ${Object.keys(speakerProfiles || {}).length} speakers detected`} onContextMenu={handleLogoContextMenu}>
             <img 
               src="https://defscribe.app/deffy-sig.png" 
               alt="Deffy Signature, link to donate"
@@ -426,7 +450,7 @@ const ControlPanel: React.FC<ControlPanelProps> = (props) => {
           </div>
         </div>
         <div id="settings-panel-content" className="transition-all duration-500 ease-in-out" style={{ maxHeight: isSettingsExpanded ? '850px' : '0px', overflow: 'hidden', opacity: isSettingsExpanded ? 1 : 0 }}>
-            <SettingsTabs {...props} />
+              <SettingsTabs {...props} speakerProfiles={props.speakerProfiles} />
         </div>
       </div>
       

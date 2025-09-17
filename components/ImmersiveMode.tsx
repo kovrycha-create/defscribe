@@ -8,11 +8,15 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 import { CENSOR_WORDS } from '../constants';
 
 const censorProfanity = (text: string, shouldCensor: boolean): string => {
-    if (!shouldCensor || !text) {
+    if (!text) return text;
+    if (!shouldCensor) {
+        try { console.debug('[ImmersiveMode] censorProfanity: censorship disabled, returning original text:', text); } catch (e) {}
         return text;
     }
     const regex = new RegExp(`\\b(${Array.from(CENSOR_WORDS).join('|')})\\b`, 'gi');
-    return text.replace(regex, (match) => '*'.repeat(match.length));
+    const result = text.replace(regex, (match) => '*'.repeat(match.length));
+    try { console.debug('[ImmersiveMode] censorProfanity: original -> censored', { original: text, censored: result }); } catch (e) {}
+    return result;
 };
 
 interface ImmersiveModeProps {

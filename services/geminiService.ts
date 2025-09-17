@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type, GenerateContentResponse, Chat } from '@google/genai';
+import { GoogleGenAI, GenerateContentResponse, Chat } from '@google/genai';
 // FIX: Added AuraData type for the new generateAuraData function.
 import { type SummaryStyle, type Emotion, type ActionItem, type Snippet, type TopicSegment, type CosmicReading, type AuraData } from '../types';
 import { fluons } from '../data/fluons';
@@ -103,11 +103,11 @@ Transcript:
 ${transcript}
 ---`;
         const schema = {
-            type: Type.OBJECT,
+            type: 'object',
             properties: {
-                summary: { type: Type.STRING, description: `A ${style} summary of the transcript.` },
+                summary: { type: 'string', description: `A ${style} summary of the transcript.` },
                 emotion: {
-                    type: Type.STRING,
+                    type: 'string',
                     enum: newEmotions,
                     description: 'The single most prominent emotional tone of the conversation.'
                 },
@@ -132,11 +132,11 @@ Transcript:
 ${transcript}
 ---`;
         const schema = {
-            type: Type.OBJECT,
+            type: 'object',
             properties: {
                 titles: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
+                    type: 'array',
+                    items: { type: 'string' }
                 }
             },
             required: ['titles']
@@ -170,15 +170,13 @@ Transcript:
 ${transcript}
 ---`;
         const schema = { 
-            type: Type.ARRAY, 
+            type: 'array', 
             items: { 
-                type: Type.OBJECT,
+                type: 'object',
                 properties: {
-                    text: { type: Type.STRING, description: "A concise name for the topic." },
-                    // FIX: Using Type.INTEGER now that type definitions are corrected.
-                    startMs: { type: Type.INTEGER, description: "The start time of the topic in milliseconds." },
-                    // FIX: Using Type.INTEGER now that type definitions are corrected.
-                    endMs: { type: Type.INTEGER, description: "The end time of the topic in milliseconds." },
+                    text: { type: 'string', description: "A concise name for the topic." },
+                    startMs: { type: 'integer', description: "The start time of the topic in milliseconds." },
+                    endMs: { type: 'integer', description: "The end time of the topic in milliseconds." },
                 },
                 required: ["text", "startMs", "endMs"],
             } 
@@ -203,13 +201,13 @@ ${transcript}
 
 Each object should have a 'type' ("action" or "decision"), 'content' (the action item text), and 'speakerLabel'.`;
         const schema = {
-            type: Type.ARRAY,
+            type: 'array',
             items: {
-                type: Type.OBJECT,
+                type: 'object',
                 properties: {
-                    type: { type: Type.STRING, enum: ['action', 'decision'] },
-                    content: { type: Type.STRING },
-                    speakerLabel: { type: Type.STRING }
+                    type: { type: 'string', enum: ['action', 'decision'] },
+                    content: { type: 'string' },
+                    speakerLabel: { type: 'string' }
                 },
                 required: ['type', 'content']
             }
@@ -234,13 +232,13 @@ ${transcript}
 
 Each object should have a 'type' ("quote", "question", or "insight"), 'content' (the snippet text), and 'speakerLabel'.`;
         const schema = {
-            type: Type.ARRAY,
+            type: 'array',
             items: {
-                type: Type.OBJECT,
+                type: 'object',
                 properties: {
-                    type: { type: Type.STRING, enum: ['quote', 'question', 'insight'] },
-                    content: { type: Type.STRING },
-                    speakerLabel: { type: Type.STRING }
+                    type: { type: 'string', enum: ['quote', 'question', 'insight'] },
+                    content: { type: 'string' },
+                    speakerLabel: { type: 'string' }
                 },
                 required: ['type', 'content']
             }
@@ -303,10 +301,10 @@ Text:
 ${text}
 ---`;
         const schema = {
-            type: Type.OBJECT,
+            type: 'object',
             properties: {
                 languageTag: {
-                    type: Type.STRING,
+                    type: 'string',
                     description: "The IETF language tag for the detected language, for example 'en-US' or 'fr-FR'."
                 },
             },
@@ -335,26 +333,26 @@ Text:
 ${text}
 ---`;
 
-    const schema = {
-        type: Type.OBJECT,
-        properties: {
-            dominantEmotion: {
-                type: Type.STRING,
-                enum: newEmotions,
-                description: 'The single most prominent emotional tone of the text.'
+        const schema = {
+            type: 'object',
+            properties: {
+                dominantEmotion: {
+                    type: 'string',
+                    enum: newEmotions,
+                    description: 'The single most prominent emotional tone of the text.'
+                },
+                sentiment: {
+                    type: 'number',
+                    description: 'A sentiment score from -1.0 (very negative) to 1.0 (very positive).'
+                },
+                keywords: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Up to 5 keywords that define the emotional tone.'
+                }
             },
-            sentiment: {
-                type: Type.NUMBER,
-                description: 'A sentiment score from -1.0 (very negative) to 1.0 (very positive).'
-            },
-            keywords: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: 'Up to 5 keywords that define the emotional tone.'
-            }
-        },
-        required: ['dominantEmotion', 'sentiment', 'keywords']
-    };
+            required: ['dominantEmotion', 'sentiment', 'keywords']
+        };
     
     // callGemini will throw on parse error, which is caught in the calling hook (useAnalytics)
     return await callGemini<AuraData>(prompt, schema);
@@ -549,10 +547,10 @@ ${JSON.stringify(Object.keys(cards).reduce((acc, key) => ({ ...acc, [key]: { tit
       systemInstruction: mainSystemPrompt.replace('<REFERENCE_TEXT>', referenceText),
       responseMimeType: 'application/json',
       responseSchema: {
-        type: Type.OBJECT,
-        properties: { speaker: { type: Type.STRING }, text: { type: Type.STRING } },
-        required: ['speaker', 'text']
-      },
+                type: 'object',
+                properties: { speaker: { type: 'string' }, text: { type: 'string' } },
+                required: ['speaker', 'text']
+            },
       temperature: 0.7,
       topK: 40,
       topP: 0.95,
@@ -569,12 +567,12 @@ ${JSON.stringify(Object.keys(cards).reduce((acc, key) => ({ ...acc, [key]: { tit
         systemInstruction: dossierPocketwatchPrompt,
         responseMimeType: 'application/json',
         responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            speaker: { type: Type.STRING },
-            text: { type: Type.STRING }
-          },
-          required: ['speaker', 'text']
+                    type: 'object',
+                    properties: {
+                        speaker: { type: 'string' },
+                        text: { type: 'string' }
+                    },
+                    required: ['speaker', 'text']
         },
         temperature: 0.8, // Slightly more creative for the watch
       }
@@ -657,11 +655,11 @@ export const getProactiveNudge = async (
       config: {
         systemInstruction: dossierProactivePrompt,
         responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: { speaker: { type: Type.STRING }, text: { type: Type.STRING } },
-          required: ['speaker', 'text']
-        },
+                responseSchema: {
+                    type: 'object',
+                    properties: { speaker: { type: 'string' }, text: { type: 'string' } },
+                    required: ['speaker', 'text']
+                },
         temperature: 0.6,
       }
     });
@@ -722,12 +720,12 @@ ${JSON.stringify(trinkets, null, 2)}
     const prompt = `TRANSCRIPT TO ANALYZE:\n---\n${transcript}\n---`;
     
     const schema = {
-        type: Type.OBJECT,
+        type: 'object',
         properties: {
-            coreStrand: { type: Type.STRING, description: "The single best-fit Core Strand name." },
-            majorArcanaId: { type: Type.STRING, description: "The single best-fit Card ID/key, e.g. 'lotur_ace'." },
-            modifiers: { type: Type.ARRAY, items: { type: Type.STRING }, description: "An array of 1-3 names of relevant Fluons or Trinkets." },
-            readingText: { type: Type.STRING, description: "The full 2-3 paragraph reading text." }
+            coreStrand: { type: 'string', description: "The single best-fit Core Strand name." },
+            majorArcanaId: { type: 'string', description: "The single best-fit Card ID/key, e.g. 'lotur_ace'." },
+            modifiers: { type: 'array', items: { type: 'string' }, description: "An array of 1-3 names of relevant Fluons or Trinkets." },
+            readingText: { type: 'string', description: "The full 2-3 paragraph reading text." }
         },
         required: ["coreStrand", "majorArcanaId", "modifiers", "readingText"]
     };

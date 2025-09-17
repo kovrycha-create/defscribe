@@ -68,7 +68,7 @@ const useAnalytics = ({
         isSummarizing: isSummarizing || isAnalyzing,
         interimTranscript,
         transcriptEntries,
-        wpm: speechAnalytics.wpm || 0,
+        wpm: (speechAnalytics && (speechAnalytics as any).wpm) ? (speechAnalytics as any).wpm : 0,
     });
     
     const auraAnalysisTimer = useRef<number | null>(null);
@@ -156,6 +156,8 @@ const useAnalytics = ({
             });
         }
 
+        // Debug: report computed speech analytics for runtime tracing
+        console.debug('useAnalytics: computed', { wpm, fillers, duration, words: words.length, pauses, speakingRateLabel });
         setSpeechAnalytics(prev => ({
             ...prev,
             wpm,

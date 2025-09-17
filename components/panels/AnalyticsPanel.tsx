@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { type SummaryStyle, type ActionItem, type Snippet, type SpeakerProfile, type SpeakerId, type SpeechAnalytics, type TranscriptEntry, type StatCardKey, type GeneratedTitle, type TopicSegment, type CosmicReading, type AuraData, type LiveAudioFeatures, Emotion } from '../../types';
+import { type SummaryStyle, type ActionItem, type Snippet, type SpeakerProfile, type SpeakerId, type SpeechAnalytics, type TranscriptEntry, type StatCardKey, type GeneratedTitle, type TopicSegment, type CosmicReading, type AuraData, type LiveAudioFeatures, type DiarizationSegment, Emotion } from '../../types';
 import TalkTimeVisualizer from '../TalkTimeVisualizer';
 import AnalyticsItemLoader from '../AnalyticsItemLoader';
 import { strands } from '../../data/strands';
@@ -35,6 +35,7 @@ interface AnalyticsPanelProps extends AuraSettings {
   hasEnoughContent: boolean;
   speechAnalytics: Partial<SpeechAnalytics>;
   speakerProfiles: Record<SpeakerId, SpeakerProfile>;
+    segments: DiarizationSegment[];
   transcriptEntries: TranscriptEntry[];
   highlightedTopic: string | null;
   onSetHighlightedTopic: (topic: string | null) => void;
@@ -323,8 +324,7 @@ const CosmicReadingLoader: React.FC = () => (
     </div>
 );
 
-const fluonNames = new Set(Object.values(fluons).flat().map(f => f.name));
-const trinketNames = new Set(trinkets.map(t => t.name));
+// Removed unused fluonNames and trinketNames to eliminate lint warnings
 
 const getLoreItemDetails = (name: string, type: 'strand' | 'card' | 'modifier', cardId?: string): { id: string, symbol: string, tab: string } | null => {
     if (type === 'strand') {
@@ -410,33 +410,34 @@ const StatCard: React.FC<{ icon: string; label: string; value: string | number; 
     </div>
 );
 
-const TABS_CONFIG: { name: string; icon: string; tab: ActiveTab; responsive: boolean }[] = [
-    { name: 'Aura', icon: 'fa-atom', tab: 'aura', responsive: false },
-    { name: 'Stats', icon: 'fa-chart-pie', tab: 'stats', responsive: false },
-    { name: 'Summary', icon: 'fa-file-alt', tab: 'summary', responsive: true },
-    { name: 'Actions', icon: 'fa-bolt', tab: 'actions', responsive: true },
-    { name: 'Snippets', icon: 'fa-thumbtack', tab: 'snippets', responsive: true },
-    { name: 'Reading', icon: 'fa-book-open', tab: 'reading', responsive: true },
+const TABS_CONFIG: { name: string; icon: string; tab: ActiveTab; }[] = [
+    { name: 'Aura', icon: 'fa-atom', tab: 'aura' },
+    { name: 'Stats', icon: 'fa-chart-pie', tab: 'stats' },
+    { name: 'Summary', icon: 'fa-file-alt', tab: 'summary' },
+    { name: 'Actions', icon: 'fa-bolt', tab: 'actions' },
+    { name: 'Snippets', icon: 'fa-thumbtack', tab: 'snippets' },
+    { name: 'Reading', icon: 'fa-book-open', tab: 'reading' },
 ];
 
 const TabButton: React.FC<{
-  name: string;
-  icon: string;
-  tab: ActiveTab;
-  activeTab: ActiveTab;
-  onClick: (tab: ActiveTab) => void;
-  count?: number;
-  isIconOnly?: boolean;
-}> = ({ name, icon, tab, activeTab, onClick, count, isIconOnly }) => {
+    name: string;
+    icon: string;
+    tab: ActiveTab;
+    activeTab: ActiveTab;
+    onClick: (tab: ActiveTab) => void;
+    count?: number;
+    isIconOnly?: boolean;
+    iconSizeVariant?: 'normal' | 'compact' | 'xs';
+}> = ({ name, icon, tab, activeTab, onClick, count, isIconOnly, iconSizeVariant = 'normal' }) => {
   const isActive = activeTab === tab;
   
   const baseClasses = 'relative text-center font-semibold py-4 text-sm md:py-2 transition-all duration-300 rounded-t-lg border border-b-0 flex items-center justify-center';
   const activeClasses = 'bg-[rgba(var(--color-primary-rgb),0.3)] text-white border-[rgba(var(--color-primary-rgb),0.5)]';
   const inactiveClasses = 'bg-[rgba(var(--color-primary-rgb),0.1)] text-slate-400 border-transparent hover:bg-[rgba(var(--color-primary-rgb),0.2)] hover:border-[rgba(var(--color-primary-rgb),0.4)] hover:border-b-transparent';
   
-  const layoutClasses = isIconOnly 
-    ? 'flex-grow-0 flex-shrink-0 basis-16'
-    : 'flex-auto'; 
+    const layoutClasses = isIconOnly
+        ? (iconSizeVariant === 'xs' ? 'flex-grow-0 flex-shrink-0 basis-10' : iconSizeVariant === 'compact' ? 'flex-grow-0 flex-shrink-0 basis-12' : 'flex-grow-0 flex-shrink-0 basis-16')
+        : 'flex-auto';
 
   return (
     <Tooltip content={name}>
@@ -444,7 +445,7 @@ const TabButton: React.FC<{
         onClick={() => onClick(tab)}
         className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses} ${layoutClasses}`}
       >
-        {isIconOnly ? <i className={`fas ${icon} text-lg`}></i> : name}
+    {isIconOnly ? <i className={`fas ${icon} ${iconSizeVariant === 'xs' ? 'text-sm' : iconSizeVariant === 'compact' ? 'text-base' : 'text-lg'}`}></i> : name}
         {count != null && count > 0 && (
           <span className={`absolute top-1 text-xs bg-[var(--color-secondary)] text-white rounded-full h-5 min-w-[1.25rem] px-1 flex items-center justify-center font-bold ${isIconOnly ? 'right-1' : 'right-2'}`}>
             {count > 99 ? "99+" : count}
@@ -554,44 +555,25 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
         pauses: { icon: "fa-pause-circle", label: "Pauses", value: speechAnalytics.pauses || 0 },
     };
 
-  const TAB_WIDTHS = {
-      aura: 75,
-      stats: 75,
-      summary: 95,
-      actions: 90,
-      snippets: 95,
-      reading: 90,
-      icon: 64, // 4rem (basis-16)
-  };
-
-  const totalTextWidth = TABS_CONFIG.reduce((sum, tab) => sum + (TAB_WIDTHS[tab.tab] || 0), 0);
-  const readingSavings = TAB_WIDTHS.reading - TAB_WIDTHS.icon;
-  const snippetsSavings = TAB_WIDTHS.snippets - TAB_WIDTHS.icon;
-  const actionsSavings = TAB_WIDTHS.actions - TAB_WIDTHS.icon;
-  const summarySavings = TAB_WIDTHS.summary - TAB_WIDTHS.icon;
-
-  const showReadingIcon = navWidth < totalTextWidth;
-  const showSnippetsIcon = navWidth < totalTextWidth - readingSavings;
-  const showActionsIcon = navWidth < totalTextWidth - readingSavings - snippetsSavings;
-  const showSummaryIcon = navWidth < totalTextWidth - readingSavings - snippetsSavings - actionsSavings;
-
-
-  const getIsIconOnly = (tabId: ActiveTab): boolean => {
-      switch(tabId) {
-          case 'reading': return showReadingIcon;
-          case 'snippets': return showSnippetsIcon;
-          case 'actions': return showActionsIcon;
-          case 'summary': return showSummaryIcon;
-          default: return false;
-      }
-  };
+        // Choose the largest icon size variant that fits entirely within the nav width.
+        // This prevents starting to shrink icons until the full 'normal' width would overflow.
+        const VARIANT_BASIS_PX: Record<'normal'|'compact'|'xs', number> = { normal: 64, compact: 48, xs: 40 };
+        const variants: Array<'normal'|'compact'|'xs'> = ['normal','compact','xs'];
+        let iconSizeVariant: 'normal'|'compact'|'xs' = 'normal';
+        if (navWidth && TABS_CONFIG.length) {
+            // Try the largest (normal) first; pick the first variant that fits total width
+            const totalFor = (variant: 'normal'|'compact'|'xs') => VARIANT_BASIS_PX[variant] * TABS_CONFIG.length;
+            const found = variants.find(v => totalFor(v) <= navWidth);
+            iconSizeVariant = found || 'xs';
+        }
 
   return (
     <div className="flex flex-col h-full cosmo-panel md:rounded-2xl p-2 md:p-4 gap-4 overflow-hidden">
       <header className="flex items-end z-10 -mx-2 md:-mx-4">
         <nav ref={navRef} className="flex w-full px-2 md:px-4 border-b border-[rgba(var(--color-primary-rgb),0.5)]">
             {TABS_CONFIG.map(tabConfig => {
-                const isIconOnly = tabConfig.responsive && getIsIconOnly(tabConfig.tab);
+                // All tabs should render as icons now; use iconSizeVariant to control size
+                const isIconOnly = true;
                 let count: number | undefined;
                 if (tabConfig.tab === 'actions') count = actionItems.length;
                 if (tabConfig.tab === 'snippets') count = snippets.length;
@@ -606,6 +588,7 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
                         onClick={handleTabClick}
                         count={count}
                         isIconOnly={isIconOnly}
+                        iconSizeVariant={iconSizeVariant}
                     />
                 );
             })}
@@ -642,7 +625,7 @@ const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
                             <p style={{ whiteSpace: 'pre-wrap' }}>{summary}</p>
                         </div>
                     )}
-                    {(speechAnalytics.topics || []).length > 0 && (
+                    {(speechAnalytics.topics && speechAnalytics.topics.length > 0) && (
                         <div className="pt-3 mt-3 border-t border-[rgba(var(--color-primary-rgb),0.2)]">
                             <h3 className="text-xs font-semibold text-slate-400 uppercase mb-2">Topics</h3>
                             <div className="flex flex-wrap gap-2">

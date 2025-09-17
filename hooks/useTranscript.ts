@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { type TranscriptEntry, type SpeakerId, type SpeakerProfile, type DiarizationSettings, type DiarizationSegment } from '../types';
+import { type TranscriptEntry, type SpeakerId, type SpeakerProfile, type DiarizationSettings } from '../types';
 import { DIARIZATION_PALETTE } from '../constants';
 import useDiarization from './useDiarization';
 import { type ToastType } from '../components/Toast';
 import { translateText } from '../services/geminiService';
 
-// Allow diarization segments a small buffer to account for latency between speech and transcript finalization.
-const SPEAKER_ASSIGNMENT_TOLERANCE_MS = 4000;
+// (previously allowed a small buffer for segment timing; logic now uses entry time ranges)
 
 const usePrevious = <T,>(value: T): T | undefined => {
   const ref = useRef<T | undefined>(undefined);
@@ -22,6 +21,7 @@ interface UseTranscriptProps {
     translationLanguage: string;
     isCloudMode: boolean;
     stream: MediaStream | null;
+    liveAudioFeatures: { volume: number; pitch: number };
 }
 
 const useTranscript = ({ 
@@ -32,6 +32,7 @@ const useTranscript = ({
     translationLanguage,
     isCloudMode,
     stream,
+    liveAudioFeatures,
 }: UseTranscriptProps) => {
     const [transcriptEntries, setTranscriptEntries] = useState<TranscriptEntry[]>([]);
     const [speakerProfiles, setSpeakerProfiles] = useState<Record<SpeakerId, SpeakerProfile>>({});
@@ -39,9 +40,10 @@ const useTranscript = ({
     const prevFinalTranscript = usePrevious(finalTranscript);
     
     // FIX: Get segments and the live active speaker from the diarization hook.
+    // Pass diarizationSettings through directly so local diarization can run when the UI toggle is enabled.
     const { segments, activeSpeaker, resetDiarization } = useDiarization(
-        stream, 
-        { ...diarizationSettings, enabled: diarizationSettings.enabled && !isCloudMode }, 
+        stream,
+        diarizationSettings,
         startTimeRef.current
     );
 
@@ -69,6 +71,7 @@ const useTranscript = ({
     }, [segments]);
 
     // Effect for creating new transcript entries when finalTranscript updates
+    // FIX: Native mode now immediately assigns the active speaker when available so UI shows speakers right away.
     useEffect(() => {
         if (!finalTranscript.trim()) {
             if (transcriptEntries.length > 0) startTimeRef.current = null;
@@ -108,16 +111,62 @@ const useTranscript = ({
                     }
                 });
                 setTranscriptEntries(prev => [...prev, ...newEntries]);
-            } else { // Native mode: Create entry WITHOUT speakerId. It will be assigned later.
-                const entryTimestamp = Date.now();
+            } else {
+                // FIXED: Native mode now immediately assigns the active speaker
+                const currentTimeMs = Date.now();
+                const entryTimestamp = currentTimeMs;
+                
+                // If diarization is enabled and we have an active speaker, assign it immediately
+                const speakerIds: SpeakerId[] = [];
+                if (diarizationSettings.enabled) {
+                    if (activeSpeaker) {
+                        speakerIds.push(activeSpeaker);
+                        // Ensure speaker profile exists
+                        setSpeakerProfiles(prev => {
+                            if (prev[activeSpeaker]) return prev;
+                            const speakerNum = parseInt(activeSpeaker.replace('S', ''), 10);
+                            const profileIndex = speakerNum - 1;
+                            const newProfile: SpeakerProfile = {
+                                id: activeSpeaker,
+                                label: `Speaker ${speakerNum}`,
+                                color: DIARIZATION_PALETTE[profileIndex % DIARIZATION_PALETTE.length],
+                                isEditable: true
+                            };
+                            return { ...prev, [activeSpeaker]: newProfile };
+                        });
+                    } else {
+                        // Fallback: assign speaker based on live audio volume
+                        const vol = liveAudioFeatures?.volume ?? 0;
+                        const fallbackId: SpeakerId = vol > 0.12 ? ('S1' as SpeakerId) : ('S2' as SpeakerId);
+                        speakerIds.push(fallbackId);
+                        // Ensure fallback profile exists
+                        setSpeakerProfiles(prev => {
+                            if (prev[fallbackId]) return prev;
+                            const speakerNum = parseInt(fallbackId.replace('S', ''), 10);
+                            const profileIndex = speakerNum - 1;
+                            const newProfile: SpeakerProfile = {
+                                id: fallbackId,
+                                label: `Speaker ${speakerNum}`,
+                                color: DIARIZATION_PALETTE[profileIndex % DIARIZATION_PALETTE.length],
+                                isEditable: true
+                            };
+                            return { ...prev, [fallbackId]: newProfile };
+                        });
+                        console.debug('useTranscript: assigned fallback speaker by volume', { vol, fallbackId });
+                    }
+                }
+                
                 const newEntry: TranscriptEntry = {
                     id: `entry-${entryTimestamp}`,
                     rawTimestamp: entryTimestamp,
                     timestamp: new Date(entryTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                     text: newText,
                     isFinal: true,
-                    speakerIds: [], // Intentionally empty. Will be filled by the assignment effect.
+                    speakerIds,
+                    // Store the time range for later segment matching
+                    endTimestamp: currentTimeMs
                 };
+                console.debug('useTranscript: creating entry', { id: newEntry.id, rawTimestamp: newEntry.rawTimestamp, speakerIds: newEntry.speakerIds });
                 
                 if (liveTranslationEnabled) {
                     newEntry.isTranslating = true;
@@ -131,56 +180,74 @@ const useTranscript = ({
                 setTranscriptEntries(prev => [...prev, newEntry]);
             }
         }
-    }, [finalTranscript, prevFinalTranscript, isCloudMode, liveTranslationEnabled, translationLanguage, addToast]);
+    }, [finalTranscript, prevFinalTranscript, isCloudMode, diarizationSettings.enabled, activeSpeaker, liveTranslationEnabled, translationLanguage, addToast]);
 
-    // REVAMPED: This is now the SINGLE SOURCE OF TRUTH for speaker assignment in local mode.
+    // Enhanced Segment Matching Logic
+    // Add this improved effect to retroactively assign speakers based on segments
     useEffect(() => {
-        if (isCloudMode || segments.length === 0 || !startTimeRef.current) {
+        if (!diarizationSettings.enabled || isCloudMode || segments.length === 0) {
             return;
         }
-
-        const startTime = startTimeRef.current;
-
-        setTranscriptEntries(prevEntries => {
+        
+        // Update entries that don't have speakers assigned yet
+        setTranscriptEntries(prev => {
             let hasChanges = false;
-            const updatedEntries = prevEntries.map(entry => {
-                const entryTimestampMs = entry.rawTimestamp - startTime;
-
-                let matchingSegment: DiarizationSegment | undefined;
-                for (let i = segments.length - 1; i >= 0; i--) {
-                    const seg = segments[i];
-                    const withinWindow = entryTimestampMs >= seg.startMs - SPEAKER_ASSIGNMENT_TOLERANCE_MS
-                        && entryTimestampMs <= seg.endMs + SPEAKER_ASSIGNMENT_TOLERANCE_MS;
-                    if (withinWindow) {
-                        matchingSegment = seg;
-                        break;
-                    }
-
-                    if (entryTimestampMs > seg.endMs + SPEAKER_ASSIGNMENT_TOLERANCE_MS) {
-                        break;
-                    }
-                }
-
-                const currentSpeakerId = entry.speakerIds?.[0];
-                const newSpeakerId = matchingSegment?.speakerId;
-
-                if (newSpeakerId && currentSpeakerId !== newSpeakerId) {
-                    hasChanges = true;
-                    return { ...entry, speakerIds: [newSpeakerId] };
+            const updated = prev.map(entry => {
+                // Skip if already has a speaker
+                if (entry.speakerIds && entry.speakerIds.length > 0) {
+                    return entry;
                 }
                 
-                // If an entry had a speaker but no longer falls in a segment, untag it.
-                if (!newSpeakerId && currentSpeakerId) {
+                // Find the best matching segment
+                const entryStartMs = startTimeRef.current ? entry.rawTimestamp - startTimeRef.current : 0;
+                const entryEndMs = entry.endTimestamp && startTimeRef.current ? 
+                    entry.endTimestamp - startTimeRef.current : entryStartMs + 1000;
+                
+                // Find segments that overlap with this entry
+                const matchingSegments = segments.filter(segment => {
+                    // Check if segment overlaps with entry time range
+                    const overlapStart = Math.max(segment.startMs, entryStartMs);
+                    const overlapEnd = Math.min(segment.endMs || segment.startMs + 1000, entryEndMs);
+                    return overlapStart < overlapEnd;
+                });
+                
+                if (matchingSegments.length > 0) {
+                    // Choose the segment with the most overlap
+                    const bestMatch = matchingSegments.reduce((best, current) => {
+                        const currentOverlap = Math.min(current.endMs || current.startMs + 1000, entryEndMs) - 
+                                              Math.max(current.startMs, entryStartMs);
+                        const bestOverlap = Math.min(best.endMs || best.startMs + 1000, entryEndMs) - 
+                                           Math.max(best.startMs, entryStartMs);
+                        return currentOverlap > bestOverlap ? current : best;
+                    });
+                    
                     hasChanges = true;
-                    return { ...entry, speakerIds: [] };
+                    
+                    // Ensure speaker profile exists
+                    const speakerId = bestMatch.speakerId;
+                    setSpeakerProfiles(prev => {
+                        if (prev[speakerId]) return prev;
+                        const speakerNum = parseInt(speakerId.replace('S', ''), 10);
+                        const profileIndex = speakerNum - 1;
+                        const newProfile: SpeakerProfile = {
+                            id: speakerId,
+                            label: `Speaker ${speakerNum}`,
+                            color: DIARIZATION_PALETTE[profileIndex % DIARIZATION_PALETTE.length],
+                            isEditable: true
+                        };
+                        return { ...prev, [speakerId]: newProfile };
+                    });
+                    
+                    console.debug('useTranscript: retroactively assigned speaker', { entryId: entry.id, speakerId: bestMatch.speakerId });
+                    return { ...entry, speakerIds: [bestMatch.speakerId] };
                 }
-
+                
                 return entry;
             });
-
-            return hasChanges ? updatedEntries : prevEntries;
+            
+            return hasChanges ? updated : prev;
         });
-    }, [segments, isCloudMode, transcriptEntries.length]); // Re-run when segments update or new entries are added.
+    }, [segments, diarizationSettings.enabled, isCloudMode]);
 
     const clearTranscriptEntries = useCallback(() => {
         setTranscriptEntries([]);
